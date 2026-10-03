@@ -190,6 +190,7 @@
       '<div class="since"><div class="lbl"><i class="fas fa-droplet"></i>おしっこ</div>' + simple('pee') + '</div>' +
       '<div class="since"><div class="lbl"><i class="fas fa-poop"></i>うんち</div>' + simple('poop') + '</div></div></section>' +
       (timers ? '<section aria-label="計測中">' + timers + '</section>' : '') +
+      (V.subsidyHint ? V.subsidyHint() : '') +
       '<section class="card" aria-label="かんたん記録"><h2><i class="fas fa-bolt" style="color:var(--warn)"></i>ワンタップ記録</h2>' +
       '<div class="quick-main">' + q('breast', '母乳', true) + q('formula', 'ミルク', true) +
       '<button class="qbtn" data-act="sleep" data-active="' + !!sleeping + '"><span class="qi" style="background:' + BA.TYPES.sleep.color + '"><i class="fas ' + (sleeping ? 'fa-sun' : 'fa-moon') + '"></i></span>' + (sleeping ? '起きた' : 'ねんね') + '</button></div>' +
@@ -318,8 +319,10 @@
     const seg = '<section class="seg">' +
       '<button data-act="healthtab" data-t="growth" aria-pressed="' + (tab === 'growth') + '"><i class="fas fa-ruler-vertical"></i> 成長</button>' +
       '<button data-act="healthtab" data-t="vaccine" aria-pressed="' + (tab === 'vaccine') + '"><i class="fas fa-syringe"></i> 予防接種</button>' +
-      '<button data-act="healthtab" data-t="food" aria-pressed="' + (tab === 'food') + '"><i class="fas fa-bowl-rice"></i> 離乳食</button></section>';
-    const body = tab === 'growth' ? growthBody() : tab === 'vaccine' ? vaccineBody() : V.foodBody();
+      '<button data-act="healthtab" data-t="food" aria-pressed="' + (tab === 'food') + '"><i class="fas fa-bowl-rice"></i> 離乳食</button>' +
+      '<button data-act="healthtab" data-t="subsidy" aria-pressed="' + (tab === 'subsidy') + '"><i class="fas fa-hand-holding-heart"></i> 補助</button></section>';
+    const body = tab === 'growth' ? growthBody() : tab === 'vaccine' ? vaccineBody() : tab === 'subsidy' ? V.subsidyBody() : V.foodBody();
+    if (tab === 'subsidy') return header() + '<main id="view">' + seg + body + '</main>' + V.tabbar();
     const report = '<section class="card"><button class="btn block" data-act="report"><i class="fas fa-file-medical"></i>受診用まとめを作る(印刷・PDF)</button>' +
       '<p class="muted" style="margin-top:8px">直近の授乳・睡眠・体温・薬・成長などを1枚にまとめます。</p></section>';
     return header() + '<main id="view">' + seg + body + report + '</main>' + V.tabbar();

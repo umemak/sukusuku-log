@@ -353,3 +353,19 @@ input[type='date']::-webkit-inner-spin-button, input[type='datetime-local']::-we
 input[type='date']::-webkit-calendar-picker-indicator, input[type='datetime-local']::-webkit-calendar-picker-indicator { margin: 0 0 0 6px; padding: 0; }
 label.field, .cand-f { min-width: 0; }
 .cand-f input { width: 100%; }
+
+/* ---------- 補助・手続き ---------- */
+select#pref-select { width: 100%; min-height: 48px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--text); padding: 8px 12px; font-size: 16px; }
+.sub-list { padding-bottom: 8px; }
+.sub-item { border-top: 1px solid var(--line); padding: 8px 0; }
+.sub-item:first-of-type { border-top: 0; }
+.sub-item > summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 44px; list-style-position: outside; }
+.sub-item > summary .sub-t { flex: 1 1 60%; min-width: 0; }
+.sub-body { padding: 4px 2px 8px; font-size: 14px; line-height: 1.7; }
+.sub-row { margin: 0 0 8px; }
+.sub-row b { display: block; font-size: 12px; color: var(--sub); }
+.sub-links { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.sub-links .link-btn { text-align: left; text-decoration: none; }
+.sub-hint { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; text-align: left; padding: 2px; min-height: 52px; }
+.sub-hint-t { flex: 1; font-size: 14px; line-height: 1.5; }
+.sub-hint .qi { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; flex: none; }

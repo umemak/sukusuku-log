@@ -11,7 +11,7 @@ app.use('/api/*', async (c, next) => {
 })
 app.route('/api', api)
 
-const V = '12'
+const V = '13'
 
 const shell = `<!doctype html>
 <html lang="ja">
@@ -52,6 +52,7 @@ const shell = `<!doctype html>
   <script src="/static/app-views.js?v=${V}" defer></script>
   <script src="/static/app-more.js?v=${V}" defer></script>
   <script src="/static/app-voice.js?v=${V}" defer></script>
+  <script src="/static/app-subsidy.js?v=${V}" defer></script>
   <script src="/static/app-main.js?v=${V}" defer></script>
 </body>
 </html>`

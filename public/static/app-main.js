@@ -192,6 +192,13 @@
     },
     statdays: (el) => { st.statDays = Number(el.dataset.d); BA.refresh(); },
     healthtab: (el) => { st.healthTab = el.dataset.t; BA.refresh(); },
+    opensubsidy: (el) => {
+      st.tab = 'health'; st.healthTab = 'subsidy'; window.scrollTo(0, 0);
+      BA.refresh().then(() => {
+        const d = document.getElementById('sub-' + (el.dataset.id || ''));
+        if (d) { d.open = true; d.scrollIntoView({ block: 'center' }); }
+      });
+    },
     gmetric: (el) => { st.growthMetric = el.dataset.m; BA.render(); },
     addgrowth: () => BA.openGrowthForm(),
     delgrowth: async (el) => {
