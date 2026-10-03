@@ -55,6 +55,7 @@
   // ---------- 描画 ----------
   BA.render = function () {
     const root = $app();
+    if (st.token && st.family) st.obMode = null;
     if (!st.token || !st.family) { root.innerHTML = V.onboard(new URLSearchParams(location.search).get('code') || ''); return; }
     if (!BA.child()) { root.innerHTML = V.noChild(); return; }
     BA.destroyCharts();
@@ -106,11 +107,12 @@
   // ---------- オンボーディング ----------
   async function onboardSubmit(kind, btn) {
     const name = document.getElementById('ob-name').value.trim();
-    const code = document.getElementById('ob-code').value.trim();
+    const codeEl = document.getElementById('ob-code');
+    const code = codeEl ? codeEl.value.trim() : '';
     const err = document.getElementById('ob-err');
     err.textContent = '';
+    if (kind === 'join' && !code) { err.textContent = '家族コードを入力してください'; codeEl.focus(); return; }
     if (!name) { err.textContent = 'あなたの呼び名を入力してください'; document.getElementById('ob-name').focus(); return; }
-    if (kind === 'join' && !code) { err.textContent = '家族コードを入力してください'; return; }
     btn.disabled = true;
     try {
       const r = kind === 'create'
@@ -136,10 +138,17 @@
 
   // ---------- クリック処理 ----------
   const actions = {
-    'ob-create': (el) => {
-      if (!confirm('新しい家族を作ります。\n\nパートナーなど、すでに家族を作った人がいる場合は、作らずに「家族コードで参加する」から入ってください。\n\n新しく作りますか?')) return;
-      onboardSubmit('create', el);
+    'ob-go': (el) => {
+      st.obMode = el.dataset.mode === 'choose' ? null : el.dataset.mode;
+      if (el.dataset.mode === 'choose' && location.search) history.replaceState(null, '', location.pathname);
+      BA.render();
+      window.scrollTo(0, 0);
+      if (!st.obMode) return;
+      const codeEl = document.getElementById('ob-code');
+      const first = codeEl && !codeEl.value ? codeEl : document.getElementById('ob-name');
+      if (first) first.focus();
     },
+    'ob-create': (el) => onboardSubmit('create', el),
     backstart: async () => {
       const alone = st.members.length <= 1;
       if (!confirm(alone
@@ -150,7 +159,7 @@
       } catch (e) {
         if (e.status !== 409) { BA.errToast(e); return; } // 取り消せない場合は、通常の連携解除にする
       }
-      st.token = null; st.family = null; st.members = []; st.children = []; st.childId = null;
+      st.token = null; st.family = null; st.members = []; st.children = []; st.childId = null; st.obMode = null;
       BA.ls.del('ba_token'); BA.ls.del('ba_child');
       BA.closeSheet();
       BA.render();

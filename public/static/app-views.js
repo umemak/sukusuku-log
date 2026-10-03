@@ -85,26 +85,46 @@
   // ---------- オンボーディング ----------
   V.onboard = function (prefill) {
     const code = prefill || '';
-    return '<div class="onboard">' +
-      '<div class="logo"><i class="fas fa-baby"></i></div>' +
-      '<h1>すくすくログ</h1>' +
+    const mode = BA.state.obMode || (code ? 'join' : 'choose');
+    const head = '<div class="logo"><i class="fas fa-baby"></i></div><h1>すくすくログ</h1>';
+    const back = '<button class="link-btn ob-back" data-act="ob-go" data-mode="choose"><i class="fas fa-arrow-left"></i> 最初の画面に戻る</button>';
+    const foot = '<p class="disclaimer">ログイン不要です。この端末にだけ保存される鍵で家族のデータにアクセスします。ブラウザのデータを消すと再度コードでの参加が必要です。記録内容は医療的な診断ではありません。</p>';
+
+    if (mode === 'join') {
+      return '<div class="onboard">' + back + head +
+        '<p class="lead">家族コードで参加します</p>' +
+        '<div class="card">' +
+        '<label class="field"><span>1. 家族コード(8文字)</span><input type="text" id="ob-code" maxlength="12" value="' + esc(code) + '" placeholder="例: K7M2QX9A" autocapitalize="characters" autocomplete="off" style="letter-spacing:.12em;font-weight:700"></label>' +
+        '<label class="field"><span>2. あなたの呼び名(記録した人として表示されます)</span><input type="text" id="ob-name" maxlength="30" placeholder="例: ママ、パパ、おばあちゃん" autocomplete="nickname"></label>' +
+        '<div class="notice"><i class="fas fa-desktop"></i> すでに参加している人が、スマホやPCなど<b>別の端末を追加する</b>ときは、前と<b>同じ呼び名</b>を入れてください。同じ人として使えます。</div>' +
+        '<div class="error-text" id="ob-err"></div>' +
+        '<button class="btn primary block" data-act="ob-join"><i class="fas fa-right-to-bracket"></i>この家族に参加する</button></div>' +
+        foot + '</div>';
+    }
+    if (mode === 'create') {
+      return '<div class="onboard">' + back + head +
+        '<p class="lead">新しい家族を作ります</p>' +
+        '<div class="notice warn"><i class="fas fa-triangle-exclamation"></i> パートナーや家族がすでに使い始めている場合は、ここでは作らず、<button class="link-btn" data-act="ob-go" data-mode="join" style="display:inline;min-height:0;padding:0">「家族コードをもらっている」</button>から参加してください。</div>' +
+        '<div class="card">' +
+        '<label class="field"><span>あなたの呼び名(記録した人として表示されます)</span><input type="text" id="ob-name" maxlength="30" placeholder="例: ママ、パパ、おばあちゃん" autocomplete="nickname"></label>' +
+        '<p class="muted" style="margin:0 0 10px">作成すると8文字の家族コードが発行されます。パートナーにはそのコードを伝えてください。</p>' +
+        '<div class="error-text" id="ob-err"></div>' +
+        '<button class="btn primary block" data-act="ob-create"><i class="fas fa-plus"></i>家族を作成する</button></div>' +
+        foot + '</div>';
+    }
+    return '<div class="onboard">' + head +
       '<p class="lead">新生児からの育児記録を、<br>パパ・ママ・家族みんなで共有。</p>' +
       '<ul class="feature-list card">' +
       '<li><i class="fas fa-hand-pointer"></i><span>授乳・睡眠・おむつをワンタップで記録</span></li>' +
       '<li><i class="fas fa-people-roof"></i><span>家族コードで同じ記録をリアルタイムに共有</span></li>' +
       '<li><i class="fas fa-chart-line"></i><span>1日・1週間のまとめと成長グラフ</span></li>' +
       '<li><i class="fas fa-syringe"></i><span>予防接種の時期を自動で計算</span></li></ul>' +
-      '<div class="card">' +
-      '<label class="field"><span>あなたの呼び名(記録した人として表示されます)</span><input type="text" id="ob-name" maxlength="30" placeholder="例: ママ、パパ、おばあちゃん" autocomplete="nickname"></label>' +
-      '<div class="error-text" id="ob-err"></div>' +
-      '<button class="btn primary block" data-act="ob-create"><i class="fas fa-plus"></i>はじめて使う(家族を新しく作る)</button></div>' +
-      '<div class="card">' +
-      '<h2><i class="fas fa-key"></i>家族コードで参加する</h2>' +
-      '<p class="muted" style="margin-bottom:10px">パートナーや家族から教えてもらったコードを入力すると、同じ記録を見られます。<br>すでに参加している人がPCなど別の端末を追加するときは、<b>同じ呼び名</b>を入れてください(同じ人として使えます)。</p>' +
-      '<label class="field"><span>家族コード</span><input type="text" id="ob-code" maxlength="12" value="' + esc(code) + '" placeholder="例: K7M2QX9A" autocapitalize="characters" autocomplete="off" style="letter-spacing:.12em;font-weight:700"></label>' +
-      '<button class="btn block" data-act="ob-join"><i class="fas fa-right-to-bracket"></i>この家族に参加する</button></div>' +
-      '<p class="disclaimer">ログイン不要です。この端末にだけ保存される鍵で家族のデータにアクセスします。ブラウザのデータを消すと再度コードでの参加が必要です。記録内容は医療的な診断ではありません。</p>' +
-      '</div>';
+      '<h2 class="ob-q">どちらですか?</h2>' +
+      '<button class="ob-choice" data-act="ob-go" data-mode="join"><span class="ob-ic"><i class="fas fa-key"></i></span>' +
+      '<span class="ob-tx"><b>家族コードをもらっている</b><small>パートナーや家族が先に始めている / 別の端末を追加する</small></span><i class="fas fa-chevron-right ob-ar"></i></button>' +
+      '<button class="ob-choice" data-act="ob-go" data-mode="create"><span class="ob-ic"><i class="fas fa-plus"></i></span>' +
+      '<span class="ob-tx"><b>はじめて使う</b><small>家族の中で最初の1人。家族コードをこれから作る</small></span><i class="fas fa-chevron-right ob-ar"></i></button>' +
+      foot + '</div>';
   };
 
   V.noChild = function () {

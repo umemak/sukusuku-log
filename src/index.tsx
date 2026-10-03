@@ -10,7 +10,7 @@ app.use('/api/*', async (c, next) => {
 })
 app.route('/api', api)
 
-const V = '7'
+const V = '8'
 
 const shell = `<!doctype html>
 <html lang="ja">

@@ -222,7 +222,7 @@ details.fold > summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
 .onboard .logo { width: 84px; height: 84px; border-radius: 26px; background: var(--soft); color: var(--primary); display: grid; place-items: center; font-size: 40px; margin: 0 auto; }
 .onboard h1 { text-align: center; font-size: 26px; }
 .onboard .lead { text-align: center; color: var(--sub); }
-.feature-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.feature-list { list-style: none; margin: 0; padding: 16px 18px; display: grid; gap: 10px; }
 .feature-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; }
 .feature-list i { color: var(--primary); margin-top: 4px; width: 18px; text-align: center; }
 .code-box { font-size: 30px; font-weight: 800; letter-spacing: 0.18em; text-align: center; background: var(--soft); border-radius: 14px; padding: 14px 8px; font-variant-numeric: tabular-nums; }
@@ -324,3 +324,15 @@ img[data-photo]:not([src]) { visibility: hidden; }
 .voice-actions { position: sticky; bottom: 0; background: var(--card); padding: 6px 0 2px; margin-top: 4px; box-shadow: 0 -8px 8px -4px var(--card); }
 .voice-actions .error-text { margin: 0 0 6px; }
 .voice-actions { bottom: calc(-20px - env(safe-area-inset-bottom)); padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+
+/* ---------- onboarding: 入口の選択 ---------- */
+.ob-q { text-align: center; font-size: 17px; margin: 4px 0 -6px; }
+.ob-choice { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 16px; border: 1.5px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: var(--shadow); min-height: 84px; }
+.ob-choice:active { transform: scale(0.98); background: var(--soft); }
+.ob-choice .ob-ic { flex: none; width: 46px; height: 46px; border-radius: 14px; background: var(--soft); color: var(--primary); display: grid; place-items: center; font-size: 20px; }
+.ob-choice .ob-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ob-choice .ob-tx b { font-size: 16.5px; }
+.ob-choice .ob-tx small { color: var(--sub); font-size: 12.5px; line-height: 1.5; }
+.ob-choice .ob-ar { color: var(--sub); }
+.ob-back { align-self: flex-start; margin-bottom: -6px; }
+.onboard .notice { margin-bottom: 0; line-height: 1.6; }
