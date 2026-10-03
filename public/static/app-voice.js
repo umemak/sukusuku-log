@@ -20,6 +20,32 @@
     } catch (e) { BA.ai.loaded = false; }
   };
 
+  // マイクが使えなかったときの案内(端末ごとに直し方が違うため)
+  function micErrorMessage(e) {
+    const name = (e && e.name) || 'Error';
+    const ua = navigator.userAgent || '';
+    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const android = /Android/.test(ua);
+    const standalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    const inApp = /Line\/|FBAN|FBAV|Instagram|Twitter|MicroMessenger/i.test(ua);
+    let m;
+    if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') {
+      m = 'マイクが許可されていません。';
+      if (inApp) m += 'LINEなどのアプリ内ブラウザではマイクが使えないことがあります。SafariやChromeで開き直してください。';
+      else if (ios && standalone) m += 'ホーム画面のアプリで拒否されたままの可能性があります。アプリを完全に閉じて開き直し、マイクの確認で「許可」を選んでください。それでもだめなら、一度Safariで開いて試してください。';
+      else if (ios) m += '設定アプリ → Safari → マイク を「確認」または「許可」にして、このページを再読み込みしてください。';
+      else if (android) m += 'アドレスバー左のアイコン → 権限 → マイク を「許可」にして、再読み込みしてください。';
+      else m += 'ブラウザのアドレスバー左のアイコンからマイクを許可して、再読み込みしてください。';
+      m += 'もしくは下の入力欄に文字で入力できます。';
+    } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+      m = 'マイクが見つかりませんでした。文字で入力できます。';
+    } else if (name === 'NotReadableError' || name === 'AbortError') {
+      m = 'マイクを使えませんでした。通話や他のアプリがマイクを使っていないか確認してください。文字でも入力できます。';
+    } else {
+      m = 'マイクを使えませんでした。文字で入力できます。';
+    }
+    return m + '(' + name + ')';
+  }
   const canRecord = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
   function pickMime() {
     const c = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
@@ -194,9 +220,7 @@
         try {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         } catch (e) {
-          st.err = (e && e.name === 'NotAllowedError')
-            ? 'マイクが許可されていません。端末の設定でマイクを許可するか、文字で入力してください'
-            : 'マイクを使えませんでした。文字で入力できます';
+          st.err = micErrorMessage(e);
           st.phase = 'text'; if (alive()) re(); return;
         }
         if (!alive()) { stream.getTracks().forEach((t) => t.stop()); return; }
