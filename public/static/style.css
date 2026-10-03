@@ -336,3 +336,20 @@ img[data-photo]:not([src]) { visibility: hidden; }
 .ob-choice .ob-ar { color: var(--sub); }
 .ob-back { align-self: flex-start; margin-bottom: -6px; }
 .onboard .notice { margin-bottom: 0; line-height: 1.6; }
+
+/* ---------- 日付・日時入力: iOS Safari で他の入力欄より広く/高さが違って見える問題の対策 ---------- */
+input[type='date'], input[type='datetime-local'], input[type='time'], input[type='month'] {
+  -webkit-appearance: none; appearance: none;
+  display: block; width: 100%; min-width: 0; max-width: 100%;
+  box-sizing: border-box; margin: 0; text-align: left;
+  line-height: 1.4; min-height: 48px;
+}
+input[type='date']::-webkit-date-and-time-value, input[type='datetime-local']::-webkit-date-and-time-value {
+  text-align: left; min-height: 1.4em; margin: 0; padding: 0;
+}
+input[type='date']::-webkit-datetime-edit, input[type='datetime-local']::-webkit-datetime-edit { padding: 0; }
+input[type='date']::-webkit-inner-spin-button, input[type='datetime-local']::-webkit-inner-spin-button { display: none; }
+/* カレンダーのアイコンは右端に小さく(Chromium系)。iOS ではタップで標準のピッカーが開く */
+input[type='date']::-webkit-calendar-picker-indicator, input[type='datetime-local']::-webkit-calendar-picker-indicator { margin: 0 0 0 6px; padding: 0; }
+label.field, .cand-f { min-width: 0; }
+.cand-f input { width: 100%; }
