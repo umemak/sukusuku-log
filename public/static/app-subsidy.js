@@ -247,9 +247,62 @@
     return '<span class="badge">申請が必要</span>';
   }
 
+  // ---------- 申請済みのチェック(お子さんごと・家族で共有) ----------
+  const subMap = () => {
+    const m = {};
+    ((BA.data && BA.data.subs) || []).forEach((r) => { m[r.item_key] = r; });
+    return m;
+  };
+  const checkable = (it) => it.apply !== 'plan';
+  const isDone = (it) => !!subMap()[it.id];
+  const doneWord = (it) => (it.apply === 'auto' ? '確認済み' : '申請済み');
+  const todayYMD = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+
+  function doneInfo(r) {
+    const d = BA.parseYMD(r.done_on);
+    const m = (BA.state.members || []).find((x) => x.id === r.member_id);
+    return fmtMD(d) + (m ? ' に' + m.name + 'さんがチェック' : ' にチェック');
+  }
+
+  async function toggleDone(id) {
+    const ch = BA.child();
+    if (!ch) return;
+    const list = (BA.data.subs || []).slice();
+    const idx = list.findIndex((r) => r.item_key === id);
+    const before = list.slice();
+    const base = '/children/' + ch.id + '/subsidies/' + encodeURIComponent(id);
+    try {
+      if (idx >= 0) {
+        list.splice(idx, 1);
+        BA.data.subs = list; BA.render();
+        await BA.api('DELETE', base);
+      } else {
+        const rec = { item_key: id, done_on: todayYMD(), member_id: BA.state.me };
+        list.push(rec);
+        BA.data.subs = list; BA.render();
+        await BA.api('PUT', base, { done_on: rec.done_on });
+      }
+    } catch (e) {
+      BA.data.subs = before; BA.render(); BA.errToast(e);
+    }
+  }
+
+  // summary の中のボタンは、開閉させずにチェックだけ切り替える
+  document.addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (!(t instanceof Element)) return;
+    const b = t.closest('[data-sub-toggle]');
+    if (!b) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    toggleDone(b.getAttribute('data-sub-toggle'));
+  });
+
   function itemHtml(it, ch, days, urgentOk) {
     let dl = '';
     let tag = '';
+    const rec = checkable(it) ? subMap()[it.id] : null;
+    if (rec) urgentOk = false;
     if (it.deadline && ch) {
       const d = it.deadline(ch.birthday);
       const left = daysLeft(d.date);
@@ -260,13 +313,23 @@
         else if (left < 0) tag = '<span class="badge late">期限超過</span>';
       }
     }
-    return '<details class="fold sub-item" id="sub-' + it.id + '"><summary><span class="sub-t">' + esc(it.title) + '</span>' + tag + badge(it) + '</summary>' +
+    const chk = checkable(it)
+      ? '<button type="button" class="sub-check' + (rec ? ' on' : '') + '" data-sub-toggle="' + it.id + '" role="checkbox" aria-checked="' + (rec ? 'true' : 'false') + '" aria-label="' + esc(it.title) + 'を' + doneWord(it) + 'にする"><i class="fas fa-check"></i></button>'
+      : '';
+    const doneBadge = rec ? '<span class="badge now">' + doneWord(it) + '</span>' : badge(it);
+    const doneBtn = checkable(it)
+      ? '<button type="button" class="btn ' + (rec ? 'soft' : 'primary') + ' sub-donebtn" data-sub-toggle="' + it.id + '">' +
+        (rec ? '<i class="fas fa-rotate-left"></i> ' + doneWord(it) + 'を取り消す' : '<i class="fas fa-check"></i> ' + doneWord(it) + 'にする') + '</button>' +
+        (rec ? '<p class="muted" style="margin:6px 0 0">' + esc(doneInfo(rec)) + '</p>' : '')
+      : '';
+    return '<details class="fold sub-item' + (rec ? ' is-done' : '') + '" id="sub-' + it.id + '"><summary>' + chk + '<span class="sub-t">' + esc(it.title) + '</span>' + tag + doneBadge + '</summary>' +
       '<div class="sub-body">' +
       '<p class="sub-row"><b>金額・内容</b>' + esc(it.amount) + '</p>' +
       '<p class="sub-row">' + esc(it.body) + '</p>' +
       (it.how ? '<p class="sub-row"><b>手続き</b>' + esc(it.how) + '</p>' : '') +
       dl +
       (it.note ? '<p class="sub-row muted">' + esc(it.note) + '</p>' : '') +
+      (doneBtn ? '<div class="sub-done-row">' + doneBtn + '</div>' : '') +
       '<div class="sub-links">' + it.links.map((l) => '<a class="link-btn" href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-arrow-up-right-from-square"></i> ' + esc(l.label) + '</a>').join('') + '</div>' +
       '</div></details>';
   }
@@ -309,9 +372,18 @@
 
     const nowAll = nowNat.concat(nowTky, nowKoto);
     // 期限のあるものを先に
-    nowAll.sort((a, b) => (a.deadline ? 0 : 1) - (b.deadline ? 0 : 1));
+    // 申請済みは後ろへ。そのなかでは期限のあるものを先に
+    nowAll.sort((a, b) => ((checkable(a) && isDone(a)) ? 1 : 0) - ((checkable(b) && isDone(b)) ? 1 : 0) || (a.deadline ? 0 : 1) - (b.deadline ? 0 : 1));
+
+    // 進み具合(申請が必要な制度のうち、チェック済みの数)
+    const allShown = NATIONAL.concat(tokyoItems.filter(() => isTokyo), isKoto ? KOTO : []);
+    const needs = allShown.filter((it) => it.apply === 'need');
+    const doneN = needs.filter((it) => isDone(it)).length;
+    const progress = needs.length
+      ? '<p class="sub-progress"><b>' + doneN + ' / ' + needs.length + '</b> 件を申請済み<span class="sub-bar"><i style="width:' + Math.round(doneN / needs.length * 100) + '%"></i></span></p>'
+      : '';
     const nowSec = section('いま確認したいこと', 'fa-bell', nowAll, ch, days, true,
-      ch ? esc(ch.name) + 'さん(' + esc(BA.ageText(ch.birthday)) + ')に関係しそうな制度です。' : '');
+      (ch ? esc(ch.name) + 'さん(' + esc(BA.ageText(ch.birthday)) + ')に関係しそうな制度です。' : '') + '<br>手続きが終わったら、左のチェックを入れておくと、家族みんなの画面に反映されます。' + progress);
     const natSec = section('そのほかの国の制度(全国共通)', 'fa-landmark', restNat, ch, days, false);
     const tkySec = isTokyo ? section('東京都の制度(そのほか)', 'fa-city', restTky, ch, days, false) : '';
     const kotoSec = isKoto ? section('江東区の制度(そのほか)', 'fa-location-dot', restKoto, ch, days, false) : '';
@@ -352,6 +424,7 @@
     if (days < 0 || days > 14) return '';
     const left = daysLeft(plusDays(ch.birthday, 15));
     if (left < 0) return '';
+    if (isDone({ id: 'jidou', apply: 'need' })) return '';
     return '<section class="card" aria-label="手続きのお知らせ"><button class="sub-hint" data-act="opensubsidy" data-id="jidou">' +
       '<span class="qi" style="background:var(--warn)"><i class="fas fa-file-signature"></i></span>' +
       '<span class="sub-hint-t"><b>児童手当の申請期限が近づいています</b><br><span class="muted">' + fmtMD(plusDays(ch.birthday, 15)) + 'まで(' + (left === 0 ? '今日' : 'あと' + left + '日') + ')。' + (BA.ls.get('ba_city') === '江東区' && BA.ls.get('ba_pref') === '東京都' ? '子ども医療証も同じ窓口で。' : '') + '補助・手続きの一覧を見る</span></span>' +

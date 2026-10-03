@@ -261,6 +261,7 @@ api.delete('/children/:id', async (c) => {
     db.prepare('DELETE FROM growth WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM vaccinations WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM foods WHERE child_id = ? AND family_id = ?').bind(id, fid),
+    db.prepare('DELETE FROM subsidy_done WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM diary WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM children WHERE id = ? AND family_id = ?').bind(id, fid)
   ])
@@ -475,6 +476,47 @@ api.delete('/children/:id/vaccinations/:key', async (c) => {
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
   await c.env.DB
     .prepare('DELETE FROM vaccinations WHERE child_id = ? AND family_id = ? AND vaccine_key = ?')
+    .bind(childId, c.get('familyId'), c.req.param('key'))
+    .run()
+  return c.json({ ok: true })
+})
+
+// ---------- 補助・手続きの「申請済み」チェック ----------
+
+const SUBSIDY_KEY = /^[a-z0-9_-]{1,40}$/
+
+api.get('/children/:id/subsidies', async (c) => {
+  const childId = c.req.param('id')
+  if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
+  const rs = await c.env.DB
+    .prepare('SELECT item_key, done_on, member_id FROM subsidy_done WHERE child_id = ? AND family_id = ?')
+    .bind(childId, c.get('familyId'))
+    .all()
+  return c.json({ subsidies: rs.results })
+})
+
+api.put('/children/:id/subsidies/:key', async (c) => {
+  const childId = c.req.param('id')
+  if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
+  const key = c.req.param('key')
+  if (!SUBSIDY_KEY.test(key)) return c.json({ error: 'invalid key' }, 400)
+  const body = await readJson(c)
+  if (!isDate(body.done_on)) return c.json({ error: '日付が正しくありません' }, 400)
+  await c.env.DB
+    .prepare(
+      `INSERT INTO subsidy_done (child_id, family_id, item_key, done_on, member_id) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(child_id, item_key) DO UPDATE SET done_on = excluded.done_on, member_id = excluded.member_id`
+    )
+    .bind(childId, c.get('familyId'), key, body.done_on, c.get('memberId'))
+    .run()
+  return c.json({ ok: true })
+})
+
+api.delete('/children/:id/subsidies/:key', async (c) => {
+  const childId = c.req.param('id')
+  if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
+  await c.env.DB
+    .prepare('DELETE FROM subsidy_done WHERE child_id = ? AND family_id = ? AND item_key = ?')
     .bind(childId, c.get('familyId'), c.req.param('key'))
     .run()
   return c.json({ ok: true })

@@ -369,3 +369,14 @@ select#pref-select { width: 100%; min-height: 48px; border: 1.5px solid var(--li
 .sub-hint { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; text-align: left; padding: 2px; min-height: 52px; }
 .sub-hint-t { flex: 1; font-size: 14px; line-height: 1.5; }
 .sub-hint .qi { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; flex: none; }
+
+/* 申請済みのチェック */
+.sub-check { flex: none; width: 36px; height: 36px; margin: -4px 0 -4px -6px; padding: 0; border: 0; background: none; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.sub-check i { width: 24px; height: 24px; border-radius: 8px; border: 2px solid var(--line); background: var(--card); color: transparent; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; transition: background 0.12s, border-color 0.12s; }
+.sub-check.on i { background: var(--ok); border-color: var(--ok); color: #fff; }
+.sub-item.is-done .sub-t { color: var(--sub); text-decoration: line-through; text-decoration-thickness: 1px; }
+.sub-done-row { margin: 10px 0 8px; }
+.sub-done-row .btn { width: 100%; }
+.sub-progress { margin: 8px 0 0; font-size: 13px; color: var(--text); }
+.sub-bar { display: block; height: 6px; border-radius: 999px; background: var(--line); margin-top: 6px; overflow: hidden; }
+.sub-bar i { display: block; height: 100%; background: var(--ok); border-radius: 999px; }

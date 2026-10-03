@@ -39,7 +39,10 @@
       jobs.push(BA.api('GET', '/children/' + c.id + '/foods'));
     }
     if (st.tab === 'memory') jobs.push(BA.api('GET', '/children/' + c.id + '/diary'));
+    // 補助の「申請済み」チェック(ホームの児童手当のお知らせと、健康タブで使う)
+    const subsP = (st.tab === 'health' || st.tab === 'home') ? BA.api('GET', '/children/' + c.id + '/subsidies').catch(() => null) : null;
     const res = await Promise.all(jobs);
+    if (subsP) { const sr = await subsP; if (sr) BA.data.subs = sr.subsidies; }
     BA.data.logs = res[0].logs;
     BA.data.last = res[1].last;
     const lb = res[1].last.breast ? BA.parseLog(res[1].last.breast) : null;
@@ -61,9 +64,9 @@
     BA.destroyCharts();
     const scroll = window.scrollY;
     const open = {};
-    root.querySelectorAll('details.fold').forEach((d, i) => { open[i] = d.open; });
+    root.querySelectorAll('details.fold').forEach((d, i) => { open[d.id || i] = d.open; }); // id があれば id で(並び替えでずれないように)
     root.innerHTML = V[st.tab] ? V[st.tab]() : V.home();
-    root.querySelectorAll('details.fold').forEach((d, i) => { if (open[i]) d.open = true; });
+    root.querySelectorAll('details.fold').forEach((d, i) => { if (open[d.id || i]) d.open = true; });
     window.scrollTo(0, scroll);
     if (st.tab === 'stats') V.drawStats();
     if (st.tab === 'health' && st.healthTab === 'growth') V.drawGrowth();
