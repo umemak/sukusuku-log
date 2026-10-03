@@ -11,7 +11,7 @@ app.use('/api/*', async (c, next) => {
 })
 app.route('/api', api)
 
-const V = '13'
+const V = '14'
 
 const shell = `<!doctype html>
 <html lang="ja">

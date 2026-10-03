@@ -144,6 +144,83 @@
     }
   ];
 
+  // 江東区(2026年10月3日に区の公式ページで確認)
+  const KOTO = [
+    {
+      id: 'koto-iryo', cat: 'お金', title: '子ども医療費助成・マル乳医療証(江東区)', apply: 'need', phase: [-30, 2000],
+      amount: '18歳到達後の最初の3月31日まで、保険診療の自己負担分を区が助成。保護者の所得制限なし(就学前は「マル乳医療証」)',
+      body: '助成を受けるには医療証の交付申請が必要です。医療証は東京都内のほとんどの医療機関で、健康保険証(マイナ保険証など)と一緒に出して使います。毎年10月1日に更新され、2026年10月1日からは緑色の医療証です(新しい医療証は9月11日以降に順次到着)。',
+      how: '区役所3階14番(こども家庭支援課給付係)か、豊洲シビックセンター3階の窓口で申請。マイナポータル(ぴったりサービス)の電子申請や郵送も使えます。出生直後で保険情報がまだ手元にない場合は、お子さんが加入予定の保護者の書類で代用できます。',
+      links: [
+        L('江東区: 子ども医療費助成', 'https://www.city.koto.lg.jp/281011/kodomo/kosodate/teate/5844.html'),
+        L('江東区: 児童手当・子ども医療費助成の電子申請', 'https://www.city.koto.lg.jp/281011/20171121.html')
+      ],
+      note: '健康診断・予防接種・差額ベッド代・入院時の食事代などは対象外です。東京都外の医療機関で受診したときなど、医療証が使えずに支払った分は、受診日の翌日から5年以内に区へ還付申請できます。'
+    },
+    {
+      id: 'koto-ninpu', cat: 'お金', title: '出産・子育て応援給付金の申請(江東区)', apply: 'need', phase: [-300, 730],
+      amount: '1回目(出産前)妊婦1人あたり5万円、2回目(出産後)お子さん1人につき5万円。現金(口座振込)またはギフトカード',
+      body: '国の「妊婦のための支援給付」を江東区で受け取る制度です。申請から約2か月で、妊産婦さん本人名義の口座に振り込まれます(配偶者名義は不可)。',
+      how: '1回目は「ゆりかご面接」の後に渡される案内に沿って、2回目は「新生児・産婦訪問」のときに渡される案内に沿って申請します。案内を受け取っていない場合は、区の出産・子育て応援給付金コールセンターへ。',
+      links: [L('江東区: 出産・子育て応援給付金(妊婦のための支援給付)', 'https://www.city.koto.lg.jp/260501/kodomo/ninshinshussan/ninshin/97552.html')],
+      note: '申請期限は、1回目が胎児の心拍が確認された受診日から2年間、2回目が出産予定日の8週間前から2年間です。'
+    },
+    {
+      id: 'koto-sango', cat: '健康', title: '産後ケア事業(江東区)', apply: 'need', phase: [-300, 365],
+      amount: '宿泊型は1泊2日9,800円〜5泊6日29,400円(2026年4月から。住民税非課税世帯・生活保護世帯は減免あり)。5泊6日まで分割して利用可',
+      body: '助産所などの施設で、助産師から母子のケア、授乳・育児の指導を受けられます。宿泊型・日帰り型は産後4か月未満(施設により受入月齢が違います)、スポット型・訪問型は産後1年未満が対象です。',
+      how: '妊娠届を出したあとの「ゆりかご面接」で、全員が申し込めて承認番号が発行されます。利用は、出産の翌日以降に、利用したい施設へ直接電話かホームページで予約します。母子健康手帳などを持参し、利用当日に負担金を施設に支払います。',
+      links: [
+        L('江東区: 産後ケア事業', 'https://www.city.koto.lg.jp/260501/kodomo/ninshinshussan/kenko/99710.html'),
+        L('江東区: 宿泊型産後ケア', 'https://www.city.koto.lg.jp/260501/kodomo/ninshinshussan/kenko/99711.html')
+      ],
+      note: '施設によって追加料金が発生することがあります。予約のキャンセルは利用前日の午前10時までに(施設により異なる)。'
+    },
+    {
+      id: 'koto-kaji', cat: '預け先', title: 'こうとう家事・育児サポート事業', apply: 'need', phase: [-300, 1095],
+      amount: '利用料は1時間500円。上限は子1人あたり、妊娠中〜0歳が90時間、1・2歳が30時間(0歳の弟妹がいる場合は90時間)',
+      body: '妊娠中または3歳未満のお子さんを育てている区内のご家庭に、訪問支援者が来て、掃除・洗濯・調理などの家事や、授乳の見守り、沐浴のサポートをしてくれます。2026年8月1日から妊娠中の方も対象になり、上限時間も増えました。双子などの多胎児家庭は別の事業(多胎児家庭向け)です。',
+      how: '区へ利用登録の申請(原則は電子申請)→ 約1週間〜10日で決定通知が郵送 → 委託事業者(パソナライフケア)のページから、希望日の1週間以上前に予約。1回2時間以上・1時間単位で、利用は午前9時〜午後9時です。',
+      links: [
+        L('江東区: こうとう家事・育児サポート事業', 'https://www.city.koto.lg.jp/281012/kajiikuji-kateihoumon.html'),
+        L('江東区: 多胎児家庭向けの事業', 'https://www.city.koto.lg.jp/281012/tataizishien2.html')
+      ],
+      note: '予約は混み合っています。前日の午後5時以降のキャンセルは、1,000円のキャンセル料と2時間分の利用時間の消費があります。'
+    },
+    {
+      id: 'koto-sitter', cat: '預け先', title: 'ベビーシッター利用支援事業(江東区)', apply: 'need', phase: [0, 2190],
+      amount: '東京都認定事業者の利用料を、1時間2,500円まで(22時〜翌7時は3,500円まで)補助。子1人あたり年度内144時間まで(多胎児・障害児・ひとり親は288時間)',
+      body: '未就学児を育てる、保護者・お子さんとも区内に住民登録がある方が対象です。区への事前申請は不要で、リフレッシュや急な用事など目的は問いません。育休中や保育園に通っている方も使えます。',
+      how: '東京都の認定事業者と直接契約し、利用のあとで事業者から「要件証明書」と領収書をもらい、利用月の翌月末(必着)までに、区の事務局へ電子申請(郵送も可)します。',
+      links: [L('江東区: ベビーシッター利用支援事業', 'https://www.city.koto.lg.jp/281012/kosodatesetaiouen/documents/babysitter.html')],
+      note: '2026年度の対象は2027年3月31日までの利用分で、最終の申請締切は2027年4月15日です。交通費・キャンセル料・月会費などは補助の対象外です。問い合わせ: 0120-996-258(平日9〜17時)'
+    },
+    {
+      id: 'koto-azukaaru', cat: '預け先', title: 'こども誰でも通園制度「あずかーる」(江東区)', apply: 'need', phase: [180, 1095],
+      amount: '江東区民は無料(園によって実費は別)。月40時間まで(国の10時間+区独自の30時間)',
+      body: '保育所などに通っていない、生後6か月〜満3歳を迎えた年度末までのお子さんを、区内の保育園・幼稚園などが定期的に預かります。受入れ年齢は施設ごとに違います。',
+      how: 'こども家庭庁の「つうえんポータル」で区へ利用認定を申請 → アカウント発行 → 利用したい施設で初回面談(要予約) → 予約して利用、の流れです。',
+      links: [
+        L('江東区: こども誰でも通園制度「あずかーる」', 'https://www.city.koto.lg.jp/285002/daretsuu.html'),
+        L('あずかーる実施園(保育園)', 'https://www.city.koto.lg.jp/285000/azukaaru-hoiku.html')
+      ],
+      note: '前日の23時59分までにキャンセルしないと、予約した時間分が利用時間として消費されます。'
+    },
+    {
+      id: 'koto-hoiku', cat: '預け先', title: '認可保育園などの第1子の保育料の無償化(江東区)', apply: 'auto', phase: [150, 1100],
+      amount: '年齢や課税状況にかかわらず、第1子の月額保育料が無償(2025年9月〜)',
+      body: '対象は認可保育園、認定こども園(2号・3号)、小規模認可保育園、居宅訪問型保育事業です。無償になるのは月額保育料のみで、延長保育料や、日用品・おむつ・行事代などの実費は対象外です。',
+      how: '対象かどうかは区が確認し、通知書が送られるため、無償化のための手続きは不要です(保育園への入園の申込みは別に必要です)。',
+      links: [L('江東区: 認可保育園等における第1子保育料の無償化', 'https://www.city.koto.lg.jp/280308/daiissimusyouka.html')]
+    }
+  ];
+
+  const KOTO_DESK = [
+    ['児童手当・子ども医療証の窓口', '区役所3階14番(こども家庭支援課給付係) 03-3647-4754 / 豊洲シビックセンター3階7番(豊洲特別出張所) 03-5859-0165'],
+    ['郵送・電子申請', '児童手当や子ども医療費助成の一部は、郵送やマイナポータルの電子申請でも手続きできます(区のページに案内があります)。'],
+    ['産後ケア・ゆりかご面接', 'お住まいの地域を担当する保健相談所、または豊洲特別出張所で受けられます。']
+  ];
+
   const PREFS = ['北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県', '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県', '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県', '岐阜県', '静岡県', '愛知県', '三重県', '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県', '鳥取県', '島根県', '岡山県', '広島県', '山口県', '徳島県', '香川県', '愛媛県', '高知県', '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県'];
 
   const MUNI = [
@@ -153,6 +230,8 @@
     ['おむつ・ベビー用品などの支給、出産祝い', '現物やクーポン、独自の給付を行う市区町村があります。'],
     ['予防接種の助成', '定期接種は無料ですが、おたふくかぜなどの任意接種を助成する市区町村があります(予防接種は「健康」タブのスケジュールも参照)。']
   ];
+
+  const CITIES = ['江東区', 'その他の区市町村'];
 
   // ---------- 状態 ----------
   const getPref = () => BA.ls.get('ba_pref') || '';
@@ -204,27 +283,43 @@
     const days = ch ? Math.round((Date.now() - BA.parseYMD(ch.birthday).getTime()) / DAY) : 0;
     const pref = getPref();
     const isTokyo = pref === '東京都';
+    const city = isTokyo ? (BA.ls.get('ba_city') || '') : '';
+    const isKoto = city === '江東区';
     const nowNat = NATIONAL.filter((it) => relevantNow(it, days));
     const restNat = NATIONAL.filter((it) => !relevantNow(it, days));
-    const nowTky = isTokyo ? TOKYO.filter((it) => relevantNow(it, days)) : [];
-    const restTky = isTokyo ? TOKYO.filter((it) => !relevantNow(it, days)) : [];
+    // 江東区は区の制度(第1子保育料の無償化)で詳しく案内するので、都の同項目は省く
+    const tokyoItems = isKoto ? TOKYO.filter((it) => it.id !== 'tokyo-hoiku') : TOKYO;
+    const nowTky = isTokyo ? tokyoItems.filter((it) => relevantNow(it, days)) : [];
+    const restTky = isTokyo ? tokyoItems.filter((it) => !relevantNow(it, days)) : [];
+    const nowKoto = isKoto ? KOTO.filter((it) => relevantNow(it, days)) : [];
+    const restKoto = isKoto ? KOTO.filter((it) => !relevantNow(it, days)) : [];
 
-    const prefSel = '<section class="card"><h2><i class="fas fa-hand-holding-heart" style="color:var(--primary)"></i>国・都道府県の補助と手続き</h2>' +
+    const prefSel = '<section class="card"><h2><i class="fas fa-hand-holding-heart" style="color:var(--primary)"></i>国・都・区の補助と手続き</h2>' +
       '<p class="muted" style="margin-bottom:10px">お子さんの月齢に合わせて、確認したい制度を並べています。内容は <b>' + AS_OF + '</b> 時点で公式ページを確認したものです。</p>' +
       '<label class="field"><span>お住まいの都道府県(この端末だけに保存)</span><select id="pref-select" aria-label="お住まいの都道府県">' +
       '<option value="">選んでください</option>' + PREFS.map((p) => '<option value="' + p + '"' + (p === pref ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label>' +
       (pref && !isTokyo ? '<div class="notice" style="margin:10px 0 0">' + esc(pref) + 'の独自の制度は、まだこのアプリに載せていません。国の制度(全国共通)は下に載っています。' +
         '<br><a class="link-btn" href="https://www.google.com/search?q=' + encodeURIComponent(pref + ' 子育て 支援 給付金 補助') + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-magnifying-glass"></i> ' + esc(pref) + 'の子育て支援を検索</a></div>' : '') +
-      (!pref ? '<p class="muted" style="margin-top:8px">都道府県を選ぶと、その都道府県の制度も表示します(現在は東京都に対応)。</p>' : '') +
+      (!pref ? '<p class="muted" style="margin-top:8px">都道府県を選ぶと、その都道府県の制度も表示します(現在は東京都に対応。東京都では江東区の制度も載せています)。</p>' : '') +
+      (isTokyo ? '<label class="field" style="margin-top:10px"><span>お住まいの区市町村(この端末だけに保存)</span><select id="city-select" aria-label="お住まいの区市町村">' +
+        '<option value="">選んでください</option>' +
+        CITIES.map((c) => '<option value="' + c + '"' + (c === city ? ' selected' : '') + '>' + c + '</option>').join('') + '</select></label>' +
+        (city === 'その他の区市町村' ? '<p class="muted" style="margin-top:6px">この区市町村の独自の制度は、まだ載せていません。下の「区市町村で確認」を参考に、役所のページを確認してください。</p>' : '') : '') +
       '</section>';
 
-    const nowAll = nowNat.concat(nowTky);
+    const nowAll = nowNat.concat(nowTky, nowKoto);
     // 期限のあるものを先に
     nowAll.sort((a, b) => (a.deadline ? 0 : 1) - (b.deadline ? 0 : 1));
     const nowSec = section('いま確認したいこと', 'fa-bell', nowAll, ch, days, true,
       ch ? esc(ch.name) + 'さん(' + esc(BA.ageText(ch.birthday)) + ')に関係しそうな制度です。' : '');
     const natSec = section('そのほかの国の制度(全国共通)', 'fa-landmark', restNat, ch, days, false);
     const tkySec = isTokyo ? section('東京都の制度(そのほか)', 'fa-city', restTky, ch, days, false) : '';
+    const kotoSec = isKoto ? section('江東区の制度(そのほか)', 'fa-location-dot', restKoto, ch, days, false) : '';
+
+    const kotoDesk = '<section class="card sub-list"><h2><i class="fas fa-building-columns" style="color:var(--primary)"></i>江東区の窓口</h2>' +
+      KOTO_DESK.map((m) => '<details class="fold sub-item"><summary><span class="sub-t">' + esc(m[0]) + '</span></summary><div class="sub-body"><p class="sub-row">' + esc(m[1]) + '</p></div></details>').join('') +
+      '<div class="sub-links" style="margin-top:8px"><a class="link-btn" href="https://www.city.koto.lg.jp/281011/kodomo/kosodate/teate/96043.html" target="_blank" rel="noopener noreferrer"><i class="fas fa-arrow-up-right-from-square"></i> 江東区: 手当と医療費助成制度について</a>' +
+      '<a class="link-btn" href="https://www.city.koto.lg.jp/shussan.html" target="_blank" rel="noopener noreferrer"><i class="fas fa-arrow-up-right-from-square"></i> 江東区: 妊娠・出産のページ</a></div></section>';
 
     const muni = '<section class="card sub-list"><h2><i class="fas fa-building-columns" style="color:var(--primary)"></i>お住まいの市区町村で確認</h2>' +
       '<p class="muted" style="margin-bottom:6px">実際の窓口や独自の上乗せは、市区町村ごとに違います。「○○市 子育て 支援」で検索するか、役所の子育て窓口・母子手帳の資料で確認してください。</p>' +
@@ -232,12 +327,17 @@
 
     const disc = '<p class="disclaimer">ここに載せた金額・条件・期限は、国や自治体の公式ページをもとにした目安です(' + AS_OF + '時点)。制度は毎年のように改正され、所得や就労形態、お住まいの自治体によって対象や手続きが変わります。申請の前に、必ずリンク先の公式ページか役所の窓口で最新の内容をご確認ください。このアプリは申請の代行や受給の保証をするものではありません。</p>';
 
-    return prefSel + nowSec + natSec + tkySec + muni + disc;
+    return prefSel + nowSec + natSec + tkySec + kotoSec + (isKoto ? kotoDesk : muni) + disc;
   };
 
-  // 都道府県の選択
+  // 都道府県・区市町村の選択
   document.addEventListener('change', (ev) => {
     const el = ev.target;
+    if (el instanceof Element && el.id === 'city-select') {
+      if (el.value) BA.ls.set('ba_city', el.value); else BA.ls.del('ba_city');
+      BA.render();
+      return;
+    }
     if (el instanceof Element && el.id === 'pref-select') {
       if (el.value) BA.ls.set('ba_pref', el.value); else BA.ls.del('ba_pref');
       BA.render();
@@ -254,9 +354,9 @@
     if (left < 0) return '';
     return '<section class="card" aria-label="手続きのお知らせ"><button class="sub-hint" data-act="opensubsidy" data-id="jidou">' +
       '<span class="qi" style="background:var(--warn)"><i class="fas fa-file-signature"></i></span>' +
-      '<span class="sub-hint-t"><b>児童手当の申請期限が近づいています</b><br><span class="muted">' + fmtMD(plusDays(ch.birthday, 15)) + 'まで(' + (left === 0 ? '今日' : 'あと' + left + '日') + ')。補助・手続きの一覧を見る</span></span>' +
+      '<span class="sub-hint-t"><b>児童手当の申請期限が近づいています</b><br><span class="muted">' + fmtMD(plusDays(ch.birthday, 15)) + 'まで(' + (left === 0 ? '今日' : 'あと' + left + '日') + ')。' + (BA.ls.get('ba_city') === '江東区' && BA.ls.get('ba_pref') === '東京都' ? '子ども医療証も同じ窓口で。' : '') + '補助・手続きの一覧を見る</span></span>' +
       '<i class="fas fa-chevron-right" style="color:var(--sub)"></i></button></section>';
   };
 
-  BA.subsidyInfo = { AS_OF, NATIONAL, TOKYO };
+  BA.subsidyInfo = { AS_OF, NATIONAL, TOKYO, KOTO };
 })();
