@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import type { Context, Next } from 'hono'
+import { parseCare, GeminiError, type GeminiEnv } from './gemini'
 
-export type Bindings = { DB: D1Database; PHOTOS: R2Bucket }
+export type Bindings = { DB: D1Database; PHOTOS: R2Bucket } & GeminiEnv
 type Vars = { familyId: string; memberId: string }
 type Env = { Bindings: Bindings; Variables: Vars }
 
@@ -594,6 +595,82 @@ api.delete('/diary/:id', async (c) => {
   await c.env.DB.prepare('DELETE FROM diary WHERE id = ? AND family_id = ?').bind(c.req.param('id'), c.get('familyId')).run()
   if (row.photo_id) await c.env.PHOTOS.delete(`${c.get('familyId')}/${row.photo_id}`)
   return c.json({ ok: true })
+})
+
+// ---------- AI(音声・文章 → 記録の候補) ----------
+// APIキーはサーバーのシークレットにだけ置く。家族ごとに1日あたりの回数を制限する。
+
+const AI_DAILY_LIMIT = 40
+const MAX_AUDIO_BYTES = 3 * 1024 * 1024
+const AUDIO_MIMES = ['audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp3', 'audio/mpeg', 'audio/aac', 'audio/m4a', 'audio/mp4', 'audio/x-m4a', 'audio/flac']
+
+const jstDay = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
+
+function localNowText(tzMin: number): string {
+  const d = new Date(Date.now() - tzMin * 60000) // getTimezoneOffset は UTC との差(分)で、日本は -540
+  const wd = '日月火水木金土'[d.getUTCDay()]
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} (${wd}曜日)`
+}
+
+async function aiUsed(db: D1Database, familyId: string): Promise<number> {
+  const r = await db.prepare('SELECT count FROM ai_usage WHERE family_id = ? AND day = ?').bind(familyId, jstDay()).first<{ count: number }>()
+  return r?.count ?? 0
+}
+
+api.get('/ai/status', async (c) => {
+  const enabled = !!c.env.GEMINI_API_KEY
+  const used = enabled ? await aiUsed(c.env.DB, c.get('familyId')) : 0
+  return c.json({ enabled, limit: AI_DAILY_LIMIT, remaining: Math.max(0, AI_DAILY_LIMIT - used) })
+})
+
+api.post('/ai/parse', async (c) => {
+  if (!c.env.GEMINI_API_KEY) return c.json({ error: 'AI機能はまだ設定されていません' }, 503)
+  const familyId = c.get('familyId')
+  const tz = Math.max(-840, Math.min(840, num(c.req.query('tz')) ?? -540))
+
+  // 入力の検証(回数を消費する前に弾く)
+  const ct = (c.req.header('Content-Type') || '').split(';')[0].trim().toLowerCase()
+  let input: Parameters<typeof parseCare>[1]
+  if (ct === 'application/json') {
+    const body = await readJson(c)
+    const text = str(body.text, 500)
+    if (!text) return c.json({ error: '文章を入力してください' }, 400)
+    input = { kind: 'text', text }
+  } else if (AUDIO_MIMES.includes(ct)) {
+    const len = Number(c.req.header('Content-Length') || 0)
+    if (len > MAX_AUDIO_BYTES) return c.json({ error: '録音が長すぎます。30秒以内でお試しください' }, 413)
+    const data = await c.req.arrayBuffer()
+    if (data.byteLength < 1000) return c.json({ error: '録音が短すぎます。もう一度お試しください' }, 400)
+    if (data.byteLength > MAX_AUDIO_BYTES) return c.json({ error: '録音が長すぎます。30秒以内でお試しください' }, 413)
+    input = { kind: 'audio', mime: ct === 'audio/mpeg' ? 'audio/mp3' : ct, data }
+  } else {
+    return c.json({ error: '対応していない入力です' }, 415)
+  }
+
+  // 回数を先に確保(同時リクエストでも超えないよう、加算してから判定)
+  const row = await c.env.DB
+    .prepare(
+      `INSERT INTO ai_usage (family_id, day, count) VALUES (?, ?, 1)
+       ON CONFLICT(family_id, day) DO UPDATE SET count = count + 1 RETURNING count`
+    )
+    .bind(familyId, jstDay())
+    .first<{ count: number }>()
+  const refund = () =>
+    c.env.DB.prepare('UPDATE ai_usage SET count = MAX(count - 1, 0) WHERE family_id = ? AND day = ?').bind(familyId, jstDay()).run()
+  if ((row?.count ?? 1) > AI_DAILY_LIMIT) {
+    await refund()
+    return c.json({ error: `AI入力は1日${AI_DAILY_LIMIT}回までです。明日またお使いください(手入力は何度でもできます)` }, 429)
+  }
+
+  try {
+    const result = await parseCare(c.env, input, localNowText(tz))
+    return c.json({ ...result, remaining: Math.max(0, AI_DAILY_LIMIT - (row?.count ?? 1)) })
+  } catch (e) {
+    await refund()
+    if (e instanceof GeminiError) return c.json({ error: e.userMessage }, e.status as 502 | 503 | 504)
+    throw e
+  }
 })
 
 api.notFound((c) => c.json({ error: 'not found' }, 404))

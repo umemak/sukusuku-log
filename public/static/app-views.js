@@ -173,7 +173,8 @@
       '<div class="quick-main">' + q('breast', '母乳', true) + q('formula', 'ミルク', true) +
       '<button class="qbtn" data-act="sleep" data-active="' + !!sleeping + '"><span class="qi" style="background:' + BA.TYPES.sleep.color + '"><i class="fas ' + (sleeping ? 'fa-sun' : 'fa-moon') + '"></i></span>' + (sleeping ? '起きた' : 'ねんね') + '</button></div>' +
       '<div class="quick-sub">' + q('pee', 'おしっこ') + q('poop', 'うんち') + q('temp', '体温', true) +
-      '<button class="qbtn" data-act="more"><span class="qi" style="background:var(--sub)"><i class="fas fa-ellipsis"></i></span>その他</button></div>' + sideHint + '</section>' +
+      '<button class="qbtn" data-act="more"><span class="qi" style="background:var(--sub)"><i class="fas fa-ellipsis"></i></span>その他</button></div>' +
+      (BA.ai && BA.ai.enabled ? '<button class="voice-btn" data-act="voice"><i class="fas fa-microphone"></i>声・文章でまとめて記録</button>' : '') + sideHint + '</section>' +
       '<section class="card" aria-label="今日のまとめ"><h2><i class="fas fa-calendar-day" style="color:var(--primary)"></i>今日のまとめ</h2>' +
       '<div class="today-stats">' +
       '<div><div class="n">' + s.feed + '<small>回</small></div><div class="l">授乳</div></div>' +

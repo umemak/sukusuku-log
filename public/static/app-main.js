@@ -76,6 +76,7 @@
       if (!st.family) await BA.reloadMe();
       if (BA.child()) await loadData();
       BA.render();
+      if (BA.loadAiStatus) BA.loadAiStatus();
     } catch (e) {
       if (!(opts && opts.silent)) BA.errToast(e);
     } finally { rendering = false; }
@@ -83,6 +84,7 @@
 
   BA.onUnauthorized = function () {
     st.token = null; st.family = null;
+    if (BA.ai) { BA.ai.loaded = false; BA.ai.enabled = false; }
     BA.ls.del('ba_token');
     BA.closeSheet();
     BA.render();
@@ -148,6 +150,7 @@
     },
     sleep: () => BA.toggleSleep(),
     more: () => BA.openTypePicker(),
+    voice: () => BA.openVoice(),
     stoptimer: (el) => BA.stopTimer(el.dataset.id),
     canceltimer: (el) => BA.cancelTimer(el.dataset.id),
     editlog: (el) => {

@@ -294,3 +294,33 @@ img[data-photo]:not([src]) { visibility: hidden; }
   .report-sheet tr { break-inside: avoid; }
   @page { margin: 14mm; }
 }
+
+/* ---------- 声・文章で記録 ---------- */
+.voice-btn { width: 100%; margin-top: 12px; min-height: 52px; border: 1.5px dashed var(--primary); background: var(--soft); color: var(--primary); border-radius: 14px; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.voice-btn:active { transform: scale(0.98); }
+#voice-root { text-align: center; }
+.voice-lead { font-weight: 700; margin: 4px 0 6px; }
+.voice-eg { font-size: 13px; margin: 0 0 14px; }
+.voice-mic { width: 96px; height: 96px; border-radius: 50%; border: 0; background: var(--primary); color: #fff; font-size: 38px; display: grid; place-items: center; margin: 10px auto 8px; box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 40%, transparent); }
+.voice-mic.rec { background: var(--danger); animation: voicePulse 1.2s ease-in-out infinite; }
+@keyframes voicePulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 45%, transparent); } 50% { box-shadow: 0 0 0 16px transparent; } }
+@media (prefers-reduced-motion: reduce) { .voice-mic.rec { animation: none; } }
+.voice-hint { margin: 0 0 16px; color: var(--sub); font-variant-numeric: tabular-nums; }
+.voice-note { font-size: 12px; margin: 12px 0 0; text-align: left; }
+.voice-wait { padding: 36px 0; color: var(--sub); }
+.voice-wait i { font-size: 32px; color: var(--primary); margin-bottom: 12px; }
+.voice-tr { text-align: left; background: var(--bg); border-radius: 12px; padding: 10px 12px; font-size: 13.5px; color: var(--sub); margin-bottom: 12px; }
+.cand-list { display: flex; flex-direction: column; gap: 10px; text-align: left; margin-bottom: 10px; }
+.cand { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; background: var(--card); }
+.cand-head { display: flex; align-items: center; gap: 10px; }
+.cand-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cand-t small { color: var(--sub); font-size: 12.5px; }
+.cand-edit { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.cand-f { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--sub); flex: 1 1 140px; }
+.cand-f input { min-height: 44px; border: 1.5px solid var(--line); border-radius: 10px; padding: 6px 10px; background: var(--bg); color: var(--text); font-size: 15px; min-width: 0; }
+.cand-f input { min-height: 40px; font-size: 14.5px; }
+.cand-f { flex: 1 1 150px; }
+.cand { padding: 8px 10px; }
+.voice-actions { position: sticky; bottom: 0; background: var(--card); padding: 6px 0 2px; margin-top: 4px; box-shadow: 0 -8px 8px -4px var(--card); }
+.voice-actions .error-text { margin: 0 0 6px; }
+.voice-actions { bottom: calc(-20px - env(safe-area-inset-bottom)); padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
