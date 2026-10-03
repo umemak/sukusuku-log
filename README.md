@@ -7,7 +7,8 @@
 
 ## URLs
 - **Dev (sandbox)**: `pm2 start ecosystem.config.cjs` 後に http://localhost:3000
-- **Production**: 未デプロイ
+- **Production**: https://sukusuku-log.pages.dev
+- **GitHub**: https://github.com/umemak/sukusuku-log
 
 ## 現在できること
 - **家族共有**: ログイン不要。「家族を新しく作る」と8文字の家族コードが発行される。パートナーはコード(または `/?code=XXXXXXXX` の招待リンク)で参加。記録には「誰が記録したか」が残る。他の家族のデータにはアクセスできない。
@@ -42,10 +43,14 @@ npm run build
 npm run db:migrate:local
 pm2 start ecosystem.config.cjs
 ```
+
+本番デプロイ(スキーマ変更時は先に `npm run db:migrate:prod`):
+```
+npm run build && npx wrangler pages deploy dist --project-name sukusuku-log --branch main
+```
 フロントの修正(`public/`)後も、`npm run build` してから `pm2 restart webapp` が必要。
 
 ## 未実装・今後の候補
-- 本番デプロイ(D1作成と `wrangler.jsonc` の database_id 差し替えが必要)
 - プッシュ通知(Cloudflare Pagesでは常駐処理ができないため未対応)
 - 写真付き思い出日記(R2)、離乳食・アレルギー記録、家事分担の見える化
 - 成長曲線(パーセンタイル)の重ね表示、小児科向けの受診用エクスポート
@@ -56,5 +61,5 @@ pm2 start ecosystem.config.cjs
 
 ## Deployment
 - **Platform**: Cloudflare Pages
-- **Status**: 未デプロイ(ローカルで動作確認済み)
+- **Status**: ✅ Active(Cloudflare Pages プロジェクト `sukusuku-log` / D1 `sukusuku-log-production`)
 - **Tech Stack**: Hono + TypeScript + D1 + Vanilla JS + Chart.js + FontAwesome

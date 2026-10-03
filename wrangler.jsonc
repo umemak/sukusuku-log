@@ -1,18 +1,17 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "webapp",
+  "name": "sukusuku-log",
   "compatibility_date": "2026-09-17",
   "pages_build_output_dir": "./dist",
   "compatibility_flags": [
     "nodejs_compat"
   ],
   // D1: ローカル開発は --local で自動的にSQLiteが作られる。
-  // 本番デプロイ時は `wrangler d1 create webapp-production` で得たIDに置き換える。
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "webapp-production",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_name": "sukusuku-log-production",
+      "database_id": "eeef20c0-b99c-4d92-b5e0-30a52474c2de"
     }
   ]
 }
