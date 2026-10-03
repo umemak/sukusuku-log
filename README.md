@@ -108,3 +108,8 @@ npx wrangler pages secret put GEMINI_MODEL --project-name sukusuku-log
 - 生後0〜14日は、ホームに「児童手当の申請期限」のお知らせを表示(出生の翌日から15日以内)。
 - データは静的(`public/static/app-subsidy.js`)。**制度が変わったら `AS_OF`(最終確認日)と内容を更新**すること。現在の最終確認日: 2026年10月3日。
 - 出産費用の無償化は法改正済みだが詳細未定のため「予定」と表示。金額・条件はあくまで目安で、公式ページへのリンクを併記。
+
+## PWAの自動更新
+- ビルドごとに版ID(`__BUILD_ID__`、`vite.config.ts` で生成)が変わり、HTMLの `<meta name="app-version">`・静的ファイルの `?v=`・`/api/version` に入る(静的ファイルのキャッシュ更新は手動の番号上げ不要)。
+- アプリは起動時・前面に戻ったとき・5分ごとに `/api/version` を確認し、版が違えば自動で最新版に入れ替える(入力中や開いているシートがあるときは「更新」ボタン付きの通知)。更新の繰り返しは1セッション1回に制限。
+- HTMLは `Cache-Control: no-cache`、Service Worker は `updateViaCache: 'none'` と `cache: 'no-cache'` で取得し、古い画面が残らないようにしている。

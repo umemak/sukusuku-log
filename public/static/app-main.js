@@ -312,7 +312,53 @@
   startPolling();
   boot();
 
+  // ---------- アプリの自動更新 ----------
+  // PWAは起動したままだと古い画面が残る。サーバーの版とちがえば、自動で最新版に入れ替える
+  const myVer = (document.querySelector('meta[name="app-version"]') || {}).content || '';
+  let updating = false;
+  async function applyUpdate() {
+    if (updating) return;
+    updating = true;
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.update().catch(() => {})));
+      }
+      if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); }
+    } catch (e) { /* 続行 */ }
+    location.reload();
+  }
+  async function checkVersion(fromBoot) {
+    if (!myVer || myVer === 'dev' || updating || !navigator.onLine) return;
+    let sv = '';
+    try {
+      const r = await fetch('/api/version?t=' + Date.now(), { cache: 'no-store', headers: { Accept: 'application/json' } });
+      if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) return; // Access のログイン画面などは無視
+      sv = (await r.json()).v || '';
+    } catch (e) { return; }
+    if (!sv || sv === myVer) { try { sessionStorage.removeItem('ba_upd'); } catch (e) {} return; }
+    // 更新の繰り返し(ループ)を防ぐ: 同じ版への自動更新は1セッションに1回だけ
+    let tried = '';
+    try { tried = sessionStorage.getItem('ba_upd') || ''; } catch (e) {}
+    const idle = !BA.sheetOpen() && !document.body.classList.contains('report-open');
+    if (idle && tried !== sv) {
+      try { sessionStorage.setItem('ba_upd', sv); } catch (e) {}
+      BA.toast('新しいバージョンに更新しています…', { ms: 1500 });
+      setTimeout(applyUpdate, fromBoot ? 0 : 800);
+    } else if (!idle || tried === sv) {
+      BA.toast('新しいバージョンがあります', { action: '更新', onAction: applyUpdate, ms: 15000 });
+    }
+  }
+  BA.checkVersion = checkVersion;
+  setTimeout(() => checkVersion(true), 1200);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(false); });
+  setInterval(() => { if (!document.hidden) checkVersion(false); }, 5 * 60 * 1000);
+
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+        .then((reg) => { document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); }); })
+        .catch(() => {});
+    });
   }
 })();
