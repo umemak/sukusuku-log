@@ -125,16 +125,32 @@
   BA.child = () => BA.state.children.find((c) => c.id === BA.state.childId) || BA.state.children[0] || null;
 
   // ---------- API ----------
+  // 通信の失敗(接続の張り直し直後など)で最初の1回だけ落ちることがあるので、
+  // 重複しても害のないもの(取得系・参加・家族作成)だけ自動で1回やり直す
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const retryable = (method, path) => method === 'GET' || path === '/join' || path === '/families';
   BA.api = async (method, path, body) => {
     const headers = { 'Content-Type': 'application/json' };
     if (BA.state.token) headers.Authorization = 'Bearer ' + BA.state.token;
     let res;
-    try {
-      res = await fetch('/api' + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-    } catch (e) {
-      const err = new Error('通信できません。電波の良い場所でもう一度お試しください');
-      err.network = true;
-      throw err;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        // redirect: manual … Cloudflare Access のログイン画面に飛ばされた場合を、通信エラーと区別するため
+        res = await fetch('/api' + path, { method, headers, redirect: 'manual', body: body === undefined ? undefined : JSON.stringify(body) });
+        if (res.type === 'opaqueredirect') {
+          const err = new Error('ログインの有効期限が切れました。ページを再読み込みします');
+          err.network = true;
+          setTimeout(() => location.reload(), 1200);
+          throw err;
+        }
+        break;
+      } catch (e) {
+        if (e && e.message && e.message.indexOf('再読み込み') >= 0) throw e;
+        if (attempt < 2 && retryable(method, path)) { await wait(500 + attempt * 700); continue; }
+        const err = new Error('通信できません。電波の良い場所でもう一度お試しください');
+        err.network = true;
+        throw err;
+      }
     }
     let data = null;
     try { data = await res.json(); } catch (e) { /* noop */ }
