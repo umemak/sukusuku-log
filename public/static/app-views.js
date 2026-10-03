@@ -110,7 +110,8 @@
   V.noChild = function () {
     return '<div class="onboard"><div class="logo"><i class="fas fa-baby"></i></div><h1>お子さんを登録しましょう</h1>' +
       '<p class="lead">生年月日から月齢と予防接種の時期を計算します。</p>' +
-      '<button class="btn primary block" data-act="addchild"><i class="fas fa-plus"></i>お子さんを登録する</button></div>';
+      '<button class="btn primary block" data-act="addchild"><i class="fas fa-plus"></i>お子さんを登録する</button>' +
+      '<button class="link-btn" data-act="backstart" style="margin-top:14px"><i class="fas fa-arrow-left"></i> 最初の画面に戻る(まちがえたとき)</button></div>';
   };
 
   // ---------- ホーム ----------

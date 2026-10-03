@@ -184,6 +184,25 @@ api.post('/families/regenerate-code', async (c) => {
   return c.json({ code })
 })
 
+// 「はじめて使う」を間違えて押したときの取り消し。
+// 家族が空(メンバー1人・お子さん0人)のときだけ、家族ごと削除できる
+api.post('/families/discard', async (c) => {
+  const db = c.env.DB
+  const fid = c.get('familyId')
+  const members = await db.prepare('SELECT COUNT(*) AS n FROM members WHERE family_id = ?').bind(fid).first<{ n: number }>()
+  const kids = await db.prepare('SELECT COUNT(*) AS n FROM children WHERE family_id = ?').bind(fid).first<{ n: number }>()
+  if ((members?.n ?? 0) !== 1 || (kids?.n ?? 0) !== 0) {
+    return c.json({ error: 'この家族にはすでにメンバーやお子さんがいるため、取り消せません。「連携を解除」を使ってください' }, 409)
+  }
+  await db.batch([
+    db.prepare('DELETE FROM member_tokens WHERE member_id IN (SELECT id FROM members WHERE family_id = ?)').bind(fid),
+    db.prepare('DELETE FROM ai_usage WHERE family_id = ?').bind(fid),
+    db.prepare('DELETE FROM members WHERE family_id = ?').bind(fid),
+    db.prepare('DELETE FROM families WHERE id = ?').bind(fid)
+  ])
+  return c.json({ ok: true })
+})
+
 // メンバーの削除(自分自身は不可)。削除された端末は以後アクセスできない
 api.delete('/members/:id', async (c) => {
   const id = c.req.param('id')

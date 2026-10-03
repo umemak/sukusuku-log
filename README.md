@@ -43,6 +43,7 @@
 | GET | /children/:id/last | 種類ごとの最新記録 |
 | PUT/DELETE | /logs/:id | ログ更新 / 削除 |
 | POST | /families/regenerate-code | 家族コードの再発行 |
+| POST | /families/discard | 「はじめて使う」の取り消し(メンバー1人・お子さん0人の家族だけ削除できる) |
 | DELETE | /members/:id | メンバー削除(自分自身は不可) |
 | GET/POST, DELETE | /children/:id/growth, /growth/:id | 成長記録 |
 | GET/POST, DELETE | /children/:id/foods, /foods/:id | 離乳食・アレルギー記録 |

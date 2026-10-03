@@ -136,7 +136,26 @@
 
   // ---------- クリック処理 ----------
   const actions = {
-    'ob-create': (el) => onboardSubmit('create', el),
+    'ob-create': (el) => {
+      if (!confirm('新しい家族を作ります。\n\nパートナーなど、すでに家族を作った人がいる場合は、作らずに「家族コードで参加する」から入ってください。\n\n新しく作りますか?')) return;
+      onboardSubmit('create', el);
+    },
+    backstart: async () => {
+      const alone = st.members.length <= 1;
+      if (!confirm(alone
+        ? '最初の画面に戻ります。いま作った(空の)家族は取り消されます。\nよろしいですか?'
+        : 'この端末の連携を解除して、最初の画面に戻ります。家族のデータは消えません。\nよろしいですか?')) return;
+      try {
+        if (alone) await BA.api('POST', '/families/discard');
+      } catch (e) {
+        if (e.status !== 409) { BA.errToast(e); return; } // 取り消せない場合は、通常の連携解除にする
+      }
+      st.token = null; st.family = null; st.members = []; st.children = []; st.childId = null;
+      BA.ls.del('ba_token'); BA.ls.del('ba_child');
+      BA.closeSheet();
+      BA.render();
+      BA.toast('最初の画面に戻りました');
+    },
     'ob-join': (el) => onboardSubmit('join', el),
     addchild: () => BA.openChildForm(null),
     editchild: (el) => BA.openChildForm(st.children.find((c) => c.id === el.dataset.id)),
