@@ -1,0 +1,250 @@
+/* すくすくログ - main: 起動・描画制御・イベント */
+(function () {
+  'use strict';
+  const BA = window.BA;
+  const V = BA.views;
+  const st = BA.state;
+  const $app = () => document.getElementById('app');
+
+  let rendering = false;
+  let pollTimer = null;
+
+  // ---------- データ取得 ----------
+  BA.reloadMe = async function () {
+    const r = await BA.api('GET', '/me');
+    st.me = r.me; st.family = r.family; st.members = r.members; st.children = r.children;
+    const ids = st.children.map((c) => c.id);
+    if (!ids.includes(st.childId)) {
+      st.childId = ids[0] || null;
+      if (st.childId) BA.ls.set('ba_child', st.childId); else BA.ls.del('ba_child');
+    }
+  };
+
+  async function loadData() {
+    const c = BA.child();
+    if (!c) return;
+    const today = BA.dayStart(Date.now());
+    const from = Math.min(
+      today - 7 * BA.DAY,
+      today + st.dayOffset * BA.DAY,
+      today - (st.statDays - 1) * BA.DAY
+    ) - BA.DAY;
+    const jobs = [
+      BA.api('GET', '/children/' + c.id + '/logs?from=' + from + '&limit=5000'),
+      BA.api('GET', '/children/' + c.id + '/last')
+    ];
+    if (st.tab === 'health') {
+      jobs.push(BA.api('GET', '/children/' + c.id + '/growth'));
+      jobs.push(BA.api('GET', '/children/' + c.id + '/vaccinations'));
+    }
+    const res = await Promise.all(jobs);
+    BA.data.logs = res[0].logs;
+    BA.data.last = res[1].last;
+    const lb = res[1].last.breast ? BA.parseLog(res[1].last.breast) : null;
+    BA.data.nextSide = lb && lb.d.side ? (lb.d.side === 'left' ? 'right' : lb.d.side === 'right' ? 'left' : 'left') : 'left';
+    if (st.tab === 'health') {
+      BA.data.growth = res[2].growth;
+      BA.data.vacs = res[3].vaccinations;
+    }
+  }
+
+  // ---------- 描画 ----------
+  BA.render = function () {
+    const root = $app();
+    if (!st.token || !st.family) { root.innerHTML = V.onboard(new URLSearchParams(location.search).get('code') || ''); return; }
+    if (!BA.child()) { root.innerHTML = V.noChild(); return; }
+    BA.destroyCharts();
+    const scroll = window.scrollY;
+    const open = {};
+    root.querySelectorAll('details.fold').forEach((d, i) => { open[i] = d.open; });
+    root.innerHTML = V[st.tab] ? V[st.tab]() : V.home();
+    root.querySelectorAll('details.fold').forEach((d, i) => { if (open[i]) d.open = true; });
+    window.scrollTo(0, scroll);
+    if (st.tab === 'stats') V.drawStats();
+    if (st.tab === 'health' && st.healthTab === 'growth') V.drawGrowth();
+  };
+
+  BA.refresh = async function (opts) {
+    if (!st.token || rendering) return;
+    rendering = true;
+    try {
+      if (!st.family) await BA.reloadMe();
+      if (BA.child()) await loadData();
+      BA.render();
+    } catch (e) {
+      if (!(opts && opts.silent)) BA.errToast(e);
+    } finally { rendering = false; }
+  };
+
+  BA.onUnauthorized = function () {
+    st.token = null; st.family = null;
+    BA.ls.del('ba_token');
+    BA.closeSheet();
+    BA.render();
+  };
+
+  // ---------- 家族間の同期(定期ポーリング) ----------
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(() => {
+      if (document.hidden || BA.sheetOpen() || !st.token) return;
+      if (st.tab === 'health') return; // 折りたたみ・入力を邪魔しない
+      BA.refresh({ silent: true });
+    }, 20000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && st.token && !BA.sheetOpen()) BA.refresh({ silent: true });
+    });
+  }
+
+  // ---------- オンボーディング ----------
+  async function onboardSubmit(kind, btn) {
+    const name = document.getElementById('ob-name').value.trim();
+    const code = document.getElementById('ob-code').value.trim();
+    const err = document.getElementById('ob-err');
+    err.textContent = '';
+    if (!name) { err.textContent = 'あなたの呼び名を入力してください'; document.getElementById('ob-name').focus(); return; }
+    if (kind === 'join' && !code) { err.textContent = '家族コードを入力してください'; return; }
+    btn.disabled = true;
+    try {
+      const r = kind === 'create'
+        ? await BA.api('POST', '/families', { memberName: name })
+        : await BA.api('POST', '/join', { memberName: name, code });
+      st.token = r.token;
+      BA.ls.set('ba_token', r.token);
+      if (location.search) history.replaceState(null, '', location.pathname);
+      await BA.reloadMe();
+      st.tab = kind === 'create' && !st.children.length ? 'home' : 'home';
+      if (kind === 'create') {
+        BA.render();
+        BA.toast('家族コードは「家族」タブで確認できます', { ms: 4000 });
+        BA.openChildForm(null);
+        return;
+      }
+      await BA.refresh();
+      BA.toast('家族に参加しました');
+    } catch (e) {
+      err.textContent = e.message;
+    } finally { btn.disabled = false; }
+  }
+
+  // ---------- クリック処理 ----------
+  const actions = {
+    'ob-create': (el) => onboardSubmit('create', el),
+    'ob-join': (el) => onboardSubmit('join', el),
+    addchild: () => BA.openChildForm(null),
+    editchild: (el) => BA.openChildForm(st.children.find((c) => c.id === el.dataset.id)),
+    switchchild: () => BA.openChildSwitcher(),
+    refresh: () => BA.refresh(),
+    tab: (el) => { st.tab = el.dataset.tab; if (st.tab === 'timeline') st.dayOffset = 0; window.scrollTo(0, 0); BA.refresh(); },
+    open: (el) => BA.openEntry(el.dataset.type),
+    quick: (el) => {
+      const t = el.dataset.type;
+      BA.quickRecord(t, t === 'poop' ? { kind: 'normal' } : null);
+    },
+    sleep: () => BA.toggleSleep(),
+    more: () => BA.openTypePicker(),
+    stoptimer: (el) => BA.stopTimer(el.dataset.id),
+    canceltimer: (el) => BA.cancelTimer(el.dataset.id),
+    editlog: (el) => {
+      const l = (BA.data.logs || []).find((x) => x.id === el.dataset.id);
+      if (l) BA.openEntry(l.type, l);
+    },
+    day: (el) => {
+      const d = st.dayOffset + Number(el.dataset.d);
+      if (d > 0) return;
+      st.dayOffset = d; BA.refresh();
+    },
+    statdays: (el) => { st.statDays = Number(el.dataset.d); BA.refresh(); },
+    healthtab: (el) => { st.healthTab = el.dataset.t; BA.refresh(); },
+    gmetric: (el) => { st.growthMetric = el.dataset.m; BA.render(); },
+    addgrowth: () => BA.openGrowthForm(),
+    delgrowth: async (el) => {
+      if (!confirm('この成長記録を削除しますか?')) return;
+      try { await BA.api('DELETE', '/growth/' + el.dataset.id); BA.toast('削除しました'); await BA.refresh(); } catch (e) { BA.errToast(e); }
+    },
+    vac: (el) => {
+      const row = BA.vaccineRows(BA.child(), BA.data.vacs).find((r) => r.key === el.dataset.key);
+      if (row) BA.openVaccine(row);
+    },
+    theme: (el) => { BA.ls.set('ba_theme', el.dataset.t); BA.applyTheme(); BA.render(); },
+    copycode: async () => {
+      try { await navigator.clipboard.writeText(st.family.code); BA.toast('家族コードをコピーしました'); }
+      catch (e) { BA.toast('コピーできませんでした。コードを手入力してください'); }
+    },
+    sharecode: async () => {
+      const url = location.origin + '/?code=' + st.family.code;
+      const text = '「すくすくログ」で育児記録を一緒に共有しましょう。リンクを開いて参加してください。\n家族コード: ' + st.family.code;
+      if (navigator.share) {
+        try { await navigator.share({ title: 'すくすくログ', text, url }); } catch (e) { /* cancelled */ }
+      } else {
+        try { await navigator.clipboard.writeText(text + '\n' + url); BA.toast('招待文をコピーしました'); }
+        catch (e) { BA.toast('共有できませんでした'); }
+      }
+    },
+    rename: async () => {
+      const me = st.members.find((m) => m.id === st.me);
+      const name = prompt('あなたの呼び名', me ? me.name : '');
+      if (!name || !name.trim()) return;
+      try { await BA.api('PUT', '/members/me', { name: name.trim() }); await BA.reloadMe(); BA.render(); BA.toast('変更しました'); } catch (e) { BA.errToast(e); }
+    },
+    logout: () => {
+      if (!confirm('この端末の連携を解除します。家族コードで再度参加できます。よろしいですか?')) return;
+      st.token = null; st.family = null; st.members = []; st.children = []; st.childId = null;
+      BA.ls.del('ba_token'); BA.ls.del('ba_child');
+      BA.render();
+    }
+  };
+
+  document.addEventListener('click', (ev) => {
+    const target = ev.target;
+    if (!(target instanceof Element)) return;
+    const sheetRoot = document.getElementById('sheet-root');
+    if (sheetRoot.contains(target)) {
+      if (target.closest('[data-sheet="close"]')) { BA.closeSheet(); return; }
+      const el = target.closest('[data-act]');
+      if (el && BA.sheetHandler) BA.sheetHandler.click(el.dataset.act, el);
+      return;
+    }
+    const el = target.closest('[data-act]');
+    if (!el || el.disabled) return;
+    const fn = actions[el.dataset.act];
+    if (fn) fn(el);
+  });
+
+  document.addEventListener('input', (ev) => {
+    const el = ev.target;
+    if (el instanceof Element && BA.sheetHandler && document.getElementById('sheet-root').contains(el)) BA.sheetHandler.input(el);
+  });
+
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && BA.sheetOpen()) BA.closeSheet();
+  });
+
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const fn = () => { if ((BA.ls.get('ba_theme') || 'auto') === 'auto') BA.applyTheme(); };
+    if (mq.addEventListener) mq.addEventListener('change', fn);
+  }
+
+  // ---------- 起動 ----------
+  async function boot() {
+    BA.applyTheme();
+    if (!st.token) { BA.render(); return; }
+    $app().innerHTML = V.loading();
+    try {
+      await BA.reloadMe();
+      await BA.refresh();
+    } catch (e) {
+      if (e.status === 401) return;
+      $app().innerHTML = '<div class="onboard"><div class="logo"><i class="fas fa-wifi"></i></div><h1>読み込めませんでした</h1><p class="lead">' + BA.esc(e.message) + '</p>' +
+        '<button class="btn primary block" onclick="location.reload()">再読み込み</button></div>';
+    }
+  }
+
+  startPolling();
+  boot();
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+})();
