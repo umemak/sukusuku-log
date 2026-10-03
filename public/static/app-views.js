@@ -68,12 +68,15 @@
       ['timeline', 'fa-list-ul', '記録'],
       ['stats', 'fa-chart-column', 'まとめ'],
       ['health', 'fa-heart-pulse', '健康'],
+      ['memory', 'fa-camera-retro', '思い出'],
       ['family', 'fa-people-roof', '家族']
     ];
     return '<nav class="tabbar" aria-label="メニュー">' + tabs.map((t) =>
       '<button data-act="tab" data-tab="' + t[0] + '"' + (BA.state.tab === t[0] ? ' aria-current="page"' : '') + '><i class="fas ' + t[1] + '"></i>' + t[2] + '</button>'
     ).join('') + '</nav>';
   };
+
+  V.header = header;
 
   V.loading = function () {
     return header() + '<main id="view"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></main>' + V.tabbar();
@@ -234,6 +237,7 @@
         '<div><div class="n">' + avg((d) => d.pee).toFixed(1) + '<small>回</small></div><div class="l">おしっこ</div></div>' +
         '<div><div class="n">' + avg((d) => d.poop).toFixed(1) + '<small>回</small></div><div class="l">うんち</div></div></div>'
         : '<div class="empty">記録がたまるとここに平均が表示されます</div>') + '</section>' +
+      (V.workload ? V.workload(logs, today - (n - 1) * BA.DAY) : '') +
       '<section class="card"><h2><i class="fas fa-moon" style="color:' + BA.TYPES.sleep.color + '"></i>睡眠時間(時間)</h2><div class="chart-box"><canvas id="ch-sleep" aria-label="睡眠時間のグラフ"></canvas></div></section>' +
       '<section class="card"><h2><i class="fas fa-bottle-water" style="color:' + BA.TYPES.formula.color + '"></i>授乳回数・ミルク量</h2><div class="chart-box"><canvas id="ch-feed" aria-label="授乳のグラフ"></canvas></div></section>' +
       '<section class="card"><h2><i class="fas fa-droplet" style="color:' + BA.TYPES.pee.color + '"></i>おむつ(おしっこ・うんち)</h2><div class="chart-box"><canvas id="ch-diaper" aria-label="おむつのグラフ"></canvas></div></section>' +
@@ -291,29 +295,40 @@
     const tab = BA.state.healthTab;
     const seg = '<section class="seg">' +
       '<button data-act="healthtab" data-t="growth" aria-pressed="' + (tab === 'growth') + '"><i class="fas fa-ruler-vertical"></i> 成長</button>' +
-      '<button data-act="healthtab" data-t="vaccine" aria-pressed="' + (tab === 'vaccine') + '"><i class="fas fa-syringe"></i> 予防接種</button></section>';
-    return header() + '<main id="view">' + seg + (tab === 'growth' ? growthBody() : vaccineBody()) + '</main>' + V.tabbar();
+      '<button data-act="healthtab" data-t="vaccine" aria-pressed="' + (tab === 'vaccine') + '"><i class="fas fa-syringe"></i> 予防接種</button>' +
+      '<button data-act="healthtab" data-t="food" aria-pressed="' + (tab === 'food') + '"><i class="fas fa-bowl-rice"></i> 離乳食</button></section>';
+    const body = tab === 'growth' ? growthBody() : tab === 'vaccine' ? vaccineBody() : V.foodBody();
+    const report = '<section class="card"><button class="btn block" data-act="report"><i class="fas fa-file-medical"></i>受診用まとめを作る(印刷・PDF)</button>' +
+      '<p class="muted" style="margin-top:8px">直近の授乳・睡眠・体温・薬・成長などを1枚にまとめます。</p></section>';
+    return header() + '<main id="view">' + seg + body + report + '</main>' + V.tabbar();
   };
 
   function growthBody() {
     const g = BA.data.growth || [];
     const metric = BA.state.growthMetric;
     const lastG = g.slice(-1)[0];
+    const ch = BA.child();
+    const pc = (ind, r, v) => {
+      if (v == null) return '';
+      const p = BA.percentile(ind, ch.gender, BA.daysOld(ch.birthday, r.measured_on), v);
+      return p == null ? '' : ' <span class="pct">' + (p < 1 ? '&lt;1' : p > 99 ? '&gt;99' : p.toFixed(0)) + '%ile</span>';
+    };
+    const noSex = ch.gender !== 'boy' && ch.gender !== 'girl';
     const list = g.slice().reverse().map((r) =>
       '<div class="log-row" style="cursor:default"><span class="log-main"><span class="log-title">' + esc(r.measured_on) + '</span><br><span class="log-sub">' +
-      [r.weight_g != null ? '体重 ' + r.weight_g.toLocaleString() + 'g' : '', r.height_cm != null ? '身長 ' + r.height_cm + 'cm' : '', r.head_cm != null ? '頭囲 ' + r.head_cm + 'cm' : '', r.note || ''].filter(Boolean).join(' ・ ') +
+      [r.weight_g != null ? '体重 ' + r.weight_g.toLocaleString() + 'g' + pc('wfa', r, r.weight_g / 1000) : '', r.height_cm != null ? '身長 ' + r.height_cm + 'cm' + pc('lhfa', r, r.height_cm) : '', r.head_cm != null ? '頭囲 ' + r.head_cm + 'cm' + pc('hcfa', r, r.head_cm) : '', esc(r.note || '')].filter(Boolean).join(' ・ ') +
       '</span></span><button class="icon-btn" data-act="delgrowth" data-id="' + r.id + '" aria-label="削除" style="box-shadow:none"><i class="fas fa-trash" style="color:var(--sub)"></i></button></div>').join('');
     return '<section class="card"><h2><i class="fas fa-seedling" style="color:var(--ok)"></i>成長の記録</h2>' +
       (lastG ? '<div class="avg-grid" style="margin-bottom:12px">' +
-        '<div><div class="n">' + (lastG.weight_g != null ? (lastG.weight_g / 1000).toFixed(2) + '<small>kg</small>' : '—') + '</div><div class="l">最新の体重</div></div>' +
-        '<div><div class="n">' + (lastG.height_cm != null ? lastG.height_cm + '<small>cm</small>' : '—') + '</div><div class="l">最新の身長</div></div>' +
-        '<div><div class="n">' + (lastG.head_cm != null ? lastG.head_cm + '<small>cm</small>' : '—') + '</div><div class="l">最新の頭囲</div></div></div>' : '') +
+        '<div><div class="n">' + (lastG.weight_g != null ? (lastG.weight_g / 1000).toFixed(2) + '<small>kg</small>' : '—') + '</div><div class="l">最新の体重' + pc('wfa', lastG, lastG.weight_g != null ? lastG.weight_g / 1000 : null) + '</div></div>' +
+        '<div><div class="n">' + (lastG.height_cm != null ? lastG.height_cm + '<small>cm</small>' : '—') + '</div><div class="l">最新の身長' + pc('lhfa', lastG, lastG.height_cm) + '</div></div>' +
+        '<div><div class="n">' + (lastG.head_cm != null ? lastG.head_cm + '<small>cm</small>' : '—') + '</div><div class="l">最新の頭囲' + pc('hcfa', lastG, lastG.head_cm) + '</div></div></div>' : '') +
       '<div class="seg" style="margin-bottom:12px">' +
       [['weight', '体重'], ['height', '身長'], ['head', '頭囲']].map((m) => '<button data-act="gmetric" data-m="' + m[0] + '" aria-pressed="' + (metric === m[0]) + '">' + m[1] + '</button>').join('') + '</div>' +
-      (g.length >= 1 ? '<div class="chart-box"><canvas id="ch-growth" aria-label="成長グラフ"></canvas></div>' : '<div class="empty">まだ記録がありません。<br>出生時や健診の測定値を記録しましょう。</div>') +
+      (g.length >= 1 ? '<div class="chart-box" style="height:280px"><canvas id="ch-growth" aria-label="成長グラフ"></canvas></div>' + (noSex ? '<p class="legend-note">お子さんの性別を設定(編集)すると、WHO基準の成長曲線とパーセンタイルが表示されます。</p>' : '<p class="legend-note">点線は WHO 成長基準の目安(下から -2SD / 中央値 / +2SD。おおよそ 3・50・97 パーセンタイル)です。</p>') : '<div class="empty">まだ記録がありません。<br>出生時や健診の測定値を記録しましょう。</div>') +
       '<button class="btn primary block" data-act="addgrowth" style="margin-top:12px"><i class="fas fa-plus"></i>成長を記録する</button></section>' +
       (g.length ? '<section class="card"><h2>記録の履歴</h2><div class="log-list">' + list + '</div></section>' : '') +
-      '<p class="disclaimer">成長の目安は個人差が大きいものです。母子健康手帳の成長曲線とあわせて、健診で医師・保健師に相談してください。</p>';
+      '<p class="disclaimer">成長の目安は個人差が大きいものです。パーセンタイルは WHO Child Growth Standards(2006)に基づく参考値で、日本の母子健康手帳(乳幼児身体発育曲線)とは基準が異なります。早産の場合は修正月齢で見ます。母子健康手帳の成長曲線とあわせて、健診で医師・保健師に相談してください。</p>';
   }
 
   V.drawGrowth = function () {
@@ -334,9 +349,24 @@
     const grid = css.getPropertyValue('--line').trim();
     const color = css.getPropertyValue('--primary').trim();
     const unit = m === 'weight' ? 'kg' : 'cm';
+    const ind = { weight: 'wfa', height: 'lhfa', head: 'hcfa' }[m];
+    const curves = [];
+    if (c.gender === 'boy' || c.gender === 'girl') {
+      const maxDays = Math.min(1856, Math.max(365, ...pts.map((p) => p.x * 30.44 + 120), 0));
+      [[-2, '-2SD'], [0, '中央値'], [2, '+2SD']].forEach((zz) => {
+        const data = [];
+        for (let dd = 0; dd <= maxDays; dd += 14) {
+          const lp = BA.lms(ind, c.gender, dd);
+          if (!lp) break;
+          const v = BA.valueAtZ(zz[0], lp);
+          data.push({ x: +(dd / 30.44).toFixed(2), y: m === 'weight' ? +v.toFixed(3) : +v.toFixed(1) });
+        }
+        curves.push({ label: zz[1], data, borderColor: text, borderDash: zz[0] === 0 ? [2, 3] : [6, 4], borderWidth: zz[0] === 0 ? 1.6 : 1.1, pointRadius: 0, fill: false, tension: 0.2, order: 5 });
+      });
+    }
     BA.charts.push(new Chart(el, {
       type: 'line',
-      data: { datasets: [{ label: { weight: '体重', height: '身長', head: '頭囲' }[m] + '(' + unit + ')', data: pts, borderColor: color, backgroundColor: color, tension: 0.25, pointRadius: 5 }] },
+      data: { datasets: curves.concat([{ label: { weight: '体重', height: '身長', head: '頭囲' }[m] + '(' + unit + ')', data: pts, borderColor: color, backgroundColor: color, tension: 0.25, pointRadius: 5, order: 1 }]) },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
@@ -385,7 +415,8 @@
     const st = BA.state;
     const theme = BA.ls.get('ba_theme') || 'auto';
     const members = st.members.map((m) =>
-      '<li><i class="fas fa-user" style="color:var(--primary)"></i><span>' + esc(m.name) + '</span>' + (m.id === st.me ? '<span class="badge">あなた</span>' : '') + '</li>').join('');
+      '<li><i class="fas fa-user" style="color:var(--primary)"></i><span style="flex:1">' + esc(m.name) + '</span>' + (m.id === st.me ? '<span class="badge">あなた</span>'
+        : '<button class="link-btn" data-act="delmember" data-id="' + m.id + '" data-name="' + esc(m.name) + '" style="color:var(--danger)">削除</button>') + '</li>').join('');
     const kids = st.children.map((c) =>
       '<li><i class="fas fa-baby" style="color:var(--primary)"></i><span style="flex:1">' + esc(c.name) + ' <span class="muted">' + esc(BA.ageText(c.birthday)) + '</span></span><button class="link-btn" data-act="editchild" data-id="' + c.id + '">編集</button></li>').join('');
     const me = st.members.find((m) => m.id === st.me);
@@ -394,7 +425,8 @@
       '<p class="muted" style="margin-bottom:10px">パートナーや家族がこのコードで参加すると、同じ記録をそれぞれのスマホで見たり、記録したりできます。</p>' +
       '<div class="code-box" aria-label="家族コード">' + esc(st.family.code) + '</div>' +
       '<div class="btn-row" style="margin-top:10px"><button class="btn" data-act="copycode"><i class="fas fa-copy"></i>コードをコピー</button><button class="btn primary" data-act="sharecode"><i class="fas fa-share-nodes"></i>招待を送る</button></div>' +
-      '<p class="disclaimer" style="margin-top:10px">コードを知っている人は誰でも参加できます。信頼できる家族にだけ共有してください。</p></section>' +
+      '<button class="link-btn" data-act="regencode" style="margin-top:8px"><i class="fas fa-arrows-rotate"></i> 家族コードを再発行する</button>' +
+      '<p class="disclaimer" style="margin-top:10px">コードを知っている人は誰でも参加できます。信頼できる家族にだけ共有してください。コードが漏れたかも…というときは再発行すると古いコードは使えなくなります(すでに参加済みの端末はそのまま使えます)。</p></section>' +
       '<section class="card"><h2><i class="fas fa-users" style="color:var(--primary)"></i>メンバー(' + st.members.length + '人)</h2><ul class="member-list">' + members + '</ul>' +
       '<button class="link-btn" data-act="rename" style="margin-top:6px"><i class="fas fa-pen"></i> 自分の呼び名を変更' + (me ? '(' + esc(me.name) + ')' : '') + '</button></section>' +
       '<section class="card"><h2><i class="fas fa-baby" style="color:var(--primary)"></i>お子さん</h2><ul class="member-list">' + kids + '</ul>' +

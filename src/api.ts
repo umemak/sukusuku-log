@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context, Next } from 'hono'
 
-export type Bindings = { DB: D1Database }
+export type Bindings = { DB: D1Database; PHOTOS: R2Bucket }
 type Vars = { familyId: string; memberId: string }
 type Env = { Bindings: Bindings; Variables: Vars }
 
@@ -58,6 +58,15 @@ const api = new Hono<Env>()
 
 // ---------- 認証不要: 家族の作成・参加 ----------
 
+async function uniqueCode(db: D1Database): Promise<string> {
+  for (let i = 0; i < 5; i++) {
+    const code = randomCode()
+    const exists = await db.prepare('SELECT 1 FROM families WHERE code = ?').bind(code).first()
+    if (!exists) return code
+  }
+  return ''
+}
+
 api.post('/families', async (c) => {
   const body = await readJson(c)
   const memberName = str(body.memberName, 30)
@@ -65,13 +74,7 @@ api.post('/families', async (c) => {
 
   const db = c.env.DB
   const familyId = uuid()
-  let code = ''
-  for (let i = 0; i < 5; i++) {
-    code = randomCode()
-    const exists = await db.prepare('SELECT 1 FROM families WHERE code = ?').bind(code).first()
-    if (!exists) break
-    code = ''
-  }
+  const code = await uniqueCode(db)
   if (!code) return c.json({ error: '家族コードの生成に失敗しました。もう一度お試しください' }, 500)
 
   const token = randomToken()
@@ -149,6 +152,26 @@ api.put('/members/me', async (c) => {
   return c.json({ ok: true })
 })
 
+// 家族コードの再発行。古いコードは使えなくなる(参加済みの端末はそのまま使える)
+api.post('/families/regenerate-code', async (c) => {
+  const code = await uniqueCode(c.env.DB)
+  if (!code) return c.json({ error: '家族コードの生成に失敗しました。もう一度お試しください' }, 500)
+  await c.env.DB.prepare('UPDATE families SET code = ? WHERE id = ?').bind(code, c.get('familyId')).run()
+  return c.json({ code })
+})
+
+// メンバーの削除(自分自身は不可)。削除された端末は以後アクセスできない
+api.delete('/members/:id', async (c) => {
+  const id = c.req.param('id')
+  if (id === c.get('memberId')) return c.json({ error: '自分自身は削除できません。「連携を解除」を使ってください' }, 400)
+  const r = await c.env.DB
+    .prepare('DELETE FROM members WHERE id = ? AND family_id = ?')
+    .bind(id, c.get('familyId'))
+    .run()
+  if (!r.meta.changes) return c.json({ error: 'not found' }, 404)
+  return c.json({ ok: true })
+})
+
 // ---------- 子ども ----------
 
 api.post('/children', async (c) => {
@@ -185,12 +208,20 @@ api.delete('/children/:id', async (c) => {
   const fid = c.get('familyId')
   const own = await db.prepare('SELECT 1 FROM children WHERE id = ? AND family_id = ?').bind(id, fid).first()
   if (!own) return c.json({ error: 'not found' }, 404)
+  const photos = await db
+    .prepare('SELECT photo_id FROM diary WHERE child_id = ? AND family_id = ? AND photo_id IS NOT NULL')
+    .bind(id, fid)
+    .all<{ photo_id: string }>()
   await db.batch([
     db.prepare('DELETE FROM logs WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM growth WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM vaccinations WHERE child_id = ? AND family_id = ?').bind(id, fid),
+    db.prepare('DELETE FROM foods WHERE child_id = ? AND family_id = ?').bind(id, fid),
+    db.prepare('DELETE FROM diary WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM children WHERE id = ? AND family_id = ?').bind(id, fid)
   ])
+  const keys = photos.results.map((p) => `${fid}/${p.photo_id}`)
+  if (keys.length) await c.env.PHOTOS.delete(keys)
   return c.json({ ok: true })
 })
 
@@ -402,6 +433,166 @@ api.delete('/children/:id/vaccinations/:key', async (c) => {
     .prepare('DELETE FROM vaccinations WHERE child_id = ? AND family_id = ? AND vaccine_key = ?')
     .bind(childId, c.get('familyId'), c.req.param('key'))
     .run()
+  return c.json({ ok: true })
+})
+
+// ---------- 離乳食・アレルギー ----------
+
+const REACTIONS = ['ok', 'mild', 'severe']
+
+api.get('/children/:id/foods', async (c) => {
+  const childId = c.req.param('id')
+  if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
+  const rs = await c.env.DB
+    .prepare(
+      `SELECT id, member_id, food, tried_on, reaction, note FROM foods
+       WHERE child_id = ? AND family_id = ? ORDER BY tried_on DESC, created_at DESC LIMIT 1000`
+    )
+    .bind(childId, c.get('familyId'))
+    .all()
+  return c.json({ foods: rs.results })
+})
+
+api.post('/children/:id/foods', async (c) => {
+  const childId = c.req.param('id')
+  if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
+  const body = await readJson(c)
+  const food = str(body.food, 40)
+  if (!food) return c.json({ error: '食材の名前を入力してください' }, 400)
+  if (!isDate(body.tried_on)) return c.json({ error: '日付を入力してください' }, 400)
+  const reaction = REACTIONS.includes(body.reaction as string) ? (body.reaction as string) : 'ok'
+  const id = uuid()
+  await c.env.DB
+    .prepare(
+      `INSERT INTO foods (id, family_id, child_id, member_id, food, tried_on, reaction, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(id, c.get('familyId'), childId, c.get('memberId'), food, body.tried_on, reaction, str(body.note, 200), now())
+    .run()
+  return c.json({ id })
+})
+
+api.delete('/foods/:id', async (c) => {
+  const r = await c.env.DB
+    .prepare('DELETE FROM foods WHERE id = ? AND family_id = ?')
+    .bind(c.req.param('id'), c.get('familyId'))
+    .run()
+  if (!r.meta.changes) return c.json({ error: 'not found' }, 404)
+  return c.json({ ok: true })
+})
+
+// ---------- 写真(R2) ----------
+
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024
+const ID_RE = /^[0-9a-f-]{36}$/
+
+// 画像はクライアントで縮小した JPEG のみ受け付ける(先頭バイトも検査)
+api.post('/photos', async (c) => {
+  const len = Number(c.req.header('Content-Length') || 0)
+  if (len > MAX_PHOTO_BYTES) return c.json({ error: '写真が大きすぎます(4MBまで)' }, 413)
+  const buf = await c.req.arrayBuffer()
+  if (buf.byteLength === 0) return c.json({ error: '写真が空です' }, 400)
+  if (buf.byteLength > MAX_PHOTO_BYTES) return c.json({ error: '写真が大きすぎます(4MBまで)' }, 413)
+  const b = new Uint8Array(buf, 0, 3)
+  if (!(b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff)) return c.json({ error: 'JPEG形式の写真のみ登録できます' }, 400)
+  const photoId = uuid()
+  await c.env.PHOTOS.put(`${c.get('familyId')}/${photoId}`, buf, { httpMetadata: { contentType: 'image/jpeg' } })
+  return c.json({ photo_id: photoId })
+})
+
+api.get('/photos/:id', async (c) => {
+  const id = c.req.param('id')
+  if (!ID_RE.test(id)) return c.json({ error: 'not found' }, 404)
+  const obj = await c.env.PHOTOS.get(`${c.get('familyId')}/${id}`)
+  if (!obj) return c.json({ error: 'not found' }, 404)
+  return new Response(obj.body, {
+    headers: {
+      'Content-Type': 'image/jpeg',
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, max-age=31536000, immutable'
+    }
+  })
+})
+
+// 日記に紐づいていない写真だけ削除できる(入力をキャンセルしたときの後始末)
+api.delete('/photos/:id', async (c) => {
+  const id = c.req.param('id')
+  if (!ID_RE.test(id)) return c.json({ error: 'not found' }, 404)
+  const used = await c.env.DB
+    .prepare('SELECT 1 FROM diary WHERE photo_id = ? AND family_id = ?')
+    .bind(id, c.get('familyId'))
+    .first()
+  if (!used) await c.env.PHOTOS.delete(`${c.get('familyId')}/${id}`)
+  return c.json({ ok: true })
+})
+
+// ---------- 思い出日記 ----------
+
+api.get('/children/:id/diary', async (c) => {
+  const childId = c.req.param('id')
+  if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
+  const limit = Math.min(Math.max(num(c.req.query('limit')) ?? 100, 1), 300)
+  const rs = await c.env.DB
+    .prepare(
+      `SELECT id, member_id, entry_date, body, photo_id FROM diary
+       WHERE child_id = ? AND family_id = ? ORDER BY entry_date DESC, created_at DESC LIMIT ?`
+    )
+    .bind(childId, c.get('familyId'), limit)
+    .all()
+  return c.json({ diary: rs.results })
+})
+
+api.post('/children/:id/diary', async (c) => {
+  const childId = c.req.param('id')
+  if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
+  const body = await readJson(c)
+  if (!isDate(body.entry_date)) return c.json({ error: '日付を入力してください' }, 400)
+  const text = str(body.body, 2000)
+  let photoId: string | null = null
+  if (body.photo_id) {
+    if (typeof body.photo_id !== 'string' || !ID_RE.test(body.photo_id)) return c.json({ error: '写真が不正です' }, 400)
+    const head = await c.env.PHOTOS.head(`${c.get('familyId')}/${body.photo_id}`)
+    if (!head) return c.json({ error: '写真が見つかりません。もう一度選択してください' }, 400)
+    photoId = body.photo_id
+  }
+  if (!text && !photoId) return c.json({ error: '写真かひとことを入力してください' }, 400)
+  const id = uuid()
+  const t = now()
+  await c.env.DB
+    .prepare(
+      `INSERT INTO diary (id, family_id, child_id, member_id, entry_date, body, photo_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(id, c.get('familyId'), childId, c.get('memberId'), body.entry_date, text, photoId, t, t)
+    .run()
+  return c.json({ id })
+})
+
+api.put('/diary/:id', async (c) => {
+  const body = await readJson(c)
+  if (!isDate(body.entry_date)) return c.json({ error: '日付を入力してください' }, 400)
+  const text = str(body.body, 2000)
+  const cur = await c.env.DB
+    .prepare('SELECT photo_id FROM diary WHERE id = ? AND family_id = ?')
+    .bind(c.req.param('id'), c.get('familyId'))
+    .first<{ photo_id: string | null }>()
+  if (!cur) return c.json({ error: 'not found' }, 404)
+  if (!text && !cur.photo_id) return c.json({ error: '写真かひとことを入力してください' }, 400)
+  await c.env.DB
+    .prepare('UPDATE diary SET entry_date = ?, body = ?, updated_at = ? WHERE id = ? AND family_id = ?')
+    .bind(body.entry_date, text, now(), c.req.param('id'), c.get('familyId'))
+    .run()
+  return c.json({ ok: true })
+})
+
+api.delete('/diary/:id', async (c) => {
+  const row = await c.env.DB
+    .prepare('SELECT photo_id FROM diary WHERE id = ? AND family_id = ?')
+    .bind(c.req.param('id'), c.get('familyId'))
+    .first<{ photo_id: string | null }>()
+  if (!row) return c.json({ error: 'not found' }, 404)
+  await c.env.DB.prepare('DELETE FROM diary WHERE id = ? AND family_id = ?').bind(c.req.param('id'), c.get('familyId')).run()
+  if (row.photo_id) await c.env.PHOTOS.delete(`${c.get('familyId')}/${row.photo_id}`)
   return c.json({ ok: true })
 })
 

@@ -10,7 +10,7 @@ app.use('/api/*', async (c, next) => {
 })
 app.route('/api', api)
 
-const V = '1'
+const V = '3'
 
 const shell = `<!doctype html>
 <html lang="ja">
@@ -41,12 +41,15 @@ const shell = `<!doctype html>
 <body>
   <div id="app" aria-live="polite"></div>
   <div id="sheet-root"></div>
+  <div id="report-root"></div>
   <div id="toast-root" role="status" aria-live="polite"></div>
   <noscript>このアプリを使うには JavaScript を有効にしてください。</noscript>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+  <script src="/static/who-lms.js?v=${V}" defer></script>
   <script src="/static/app-core.js?v=${V}" defer></script>
   <script src="/static/app-sheets.js?v=${V}" defer></script>
   <script src="/static/app-views.js?v=${V}" defer></script>
+  <script src="/static/app-more.js?v=${V}" defer></script>
   <script src="/static/app-main.js?v=${V}" defer></script>
 </body>
 </html>`

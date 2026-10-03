@@ -10,6 +10,7 @@
     const actions = actionsFactory(re);
     BA.openSheet(title, icon, render(), {
       click(act, el) { if (actions[act]) actions[act](el); },
+      change(el) { if (actions.change) actions.change(el); },
       input(el) {
         const k = el.dataset.bind;
         if (!k) return;
@@ -403,4 +404,6 @@
     if (!confirm('この計測を破棄しますか?')) return;
     try { await BA.api('DELETE', '/logs/' + id); await BA.refresh(); } catch (e) { BA.errToast(e); }
   };
+
+  BA.ui = { mountSheet, setErr, guard, seg, stepper, iconHtml };
 })();

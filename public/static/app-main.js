@@ -36,7 +36,9 @@
     if (st.tab === 'health') {
       jobs.push(BA.api('GET', '/children/' + c.id + '/growth'));
       jobs.push(BA.api('GET', '/children/' + c.id + '/vaccinations'));
+      jobs.push(BA.api('GET', '/children/' + c.id + '/foods'));
     }
+    if (st.tab === 'memory') jobs.push(BA.api('GET', '/children/' + c.id + '/diary'));
     const res = await Promise.all(jobs);
     BA.data.logs = res[0].logs;
     BA.data.last = res[1].last;
@@ -45,7 +47,9 @@
     if (st.tab === 'health') {
       BA.data.growth = res[2].growth;
       BA.data.vacs = res[3].vaccinations;
+      BA.data.foods = res[4].foods;
     }
+    if (st.tab === 'memory') BA.data.diary = res[2].diary;
   }
 
   // ---------- 描画 ----------
@@ -62,6 +66,7 @@
     window.scrollTo(0, scroll);
     if (st.tab === 'stats') V.drawStats();
     if (st.tab === 'health' && st.healthTab === 'growth') V.drawGrowth();
+    BA.hydratePhotos(root);
   };
 
   BA.refresh = async function (opts) {
@@ -88,7 +93,7 @@
     if (pollTimer) return;
     pollTimer = setInterval(() => {
       if (document.hidden || BA.sheetOpen() || !st.token) return;
-      if (st.tab === 'health') return; // 折りたたみ・入力を邪魔しない
+      if (st.tab === 'health' || document.body.classList.contains('report-open')) return; // 折りたたみ・入力を邪魔しない
       BA.refresh({ silent: true });
     }, 20000);
     document.addEventListener('visibilitychange', () => {
@@ -187,6 +192,25 @@
       if (!name || !name.trim()) return;
       try { await BA.api('PUT', '/members/me', { name: name.trim() }); await BA.reloadMe(); BA.render(); BA.toast('変更しました'); } catch (e) { BA.errToast(e); }
     },
+    addfood: (el) => BA.openFoodForm(el.dataset.food || ''),
+    delfood: async (el) => {
+      if (!confirm('この記録を削除しますか?')) return;
+      try { await BA.api('DELETE', '/foods/' + el.dataset.id); BA.toast('削除しました'); await BA.refresh(); } catch (e) { BA.errToast(e); }
+    },
+    adddiary: () => BA.openDiary(null),
+    editdiary: (el) => { const d = (BA.data.diary || []).find((x) => x.id === el.dataset.id); if (d) BA.openDiary(d); },
+    report: () => BA.openReport(),
+    'report-close': () => BA.closeReport(),
+    'report-print': () => BA.printReport(),
+    'report-days': (el) => BA.reportDays(Number(el.dataset.d)),
+    regencode: async () => {
+      if (!confirm('家族コードを再発行します。古いコードでは参加できなくなります(参加済みの端末はそのまま使えます)。よろしいですか?')) return;
+      try { const r = await BA.api('POST', '/families/regenerate-code'); st.family.code = r.code; BA.render(); BA.toast('新しいコードを発行しました'); } catch (e) { BA.errToast(e); }
+    },
+    delmember: async (el) => {
+      if (!confirm('「' + el.dataset.name + '」を家族から削除しますか?\nその端末は記録を見られなくなります(過去の記録は残ります)。')) return;
+      try { await BA.api('DELETE', '/members/' + el.dataset.id); await BA.reloadMe(); BA.render(); BA.toast('削除しました'); } catch (e) { BA.errToast(e); }
+    },
     logout: () => {
       if (!confirm('この端末の連携を解除します。家族コードで再度参加できます。よろしいですか?')) return;
       st.token = null; st.family = null; st.members = []; st.children = []; st.childId = null;
@@ -216,7 +240,13 @@
     if (el instanceof Element && BA.sheetHandler && document.getElementById('sheet-root').contains(el)) BA.sheetHandler.input(el);
   });
 
+  document.addEventListener('change', (ev) => {
+    const el = ev.target;
+    if (el instanceof Element && BA.sheetHandler && BA.sheetHandler.change && document.getElementById('sheet-root').contains(el)) BA.sheetHandler.change(el);
+  });
+
   document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && document.body.classList.contains('report-open')) { BA.closeReport(); return; }
     if (ev.key === 'Escape' && BA.sheetOpen()) BA.closeSheet();
   });
 

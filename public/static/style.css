@@ -81,11 +81,11 @@ main#view { padding: 4px 14px 0; display: flex; flex-direction: column; gap: 14p
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 30;
   width: 100%; max-width: 560px; height: calc(var(--tab-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   background: var(--card); border-top: 1px solid var(--line);
 }
-.tabbar button { border: 0; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--sub); font-size: 11.5px; }
-.tabbar button i { font-size: 20px; }
+.tabbar button { border: 0; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--sub); font-size: 11px; padding: 0; }
+.tabbar button i { font-size: 19px; }
 .tabbar button[aria-current='page'] { color: var(--primary); font-weight: 700; }
 
 /* ---------- buttons / forms ---------- */
@@ -153,7 +153,7 @@ textarea { resize: vertical; min-height: 72px; }
 .quick-sub .qbtn .qi { width: 34px; height: 34px; font-size: 15px; }
 .qbtn[data-active='true'] { border: 2px solid var(--primary); background: var(--soft); }
 
-.today-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; text-align: center; }
+.today-stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; text-align: center; }
 .today-stats .n { font-size: 20px; font-weight: 800; line-height: 1.2; }
 .today-stats .n small { font-size: 11px; font-weight: 600; color: var(--sub); }
 .today-stats .l { font-size: 11.5px; color: var(--sub); }
@@ -235,3 +235,62 @@ details.fold > summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
 @keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- percentile / workload / foods / diary ---------- */
+.pct { display: inline-block; font-size: 11.5px; font-weight: 700; color: var(--primary); background: var(--soft); border-radius: 999px; padding: 0 8px; margin-left: 4px; }
+.legend-note { font-size: 12px; color: var(--sub); margin-top: 8px; }
+.wl-row { margin-bottom: 14px; }
+.wl-row:last-child { margin-bottom: 0; }
+.wl-head { display: flex; justify-content: space-between; font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+.wl-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--line); }
+.wl-bar span { display: block; height: 100%; }
+.wl-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 12.5px; color: var(--sub); }
+.wl-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+
+.chip-group-title { font-size: 12.5px; color: var(--sub); font-weight: 700; margin: 12px 0 2px; }
+.allergen-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.allergen { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; background: var(--bg); font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.allergen[data-done='true'] { border-color: var(--ok); }
+.allergen small { color: var(--sub); font-size: 11.5px; }
+.badge.mild { background: color-mix(in srgb, var(--warn) 22%, var(--card)); color: var(--warn); }
+.badge.severe { background: color-mix(in srgb, var(--danger) 18%, var(--card)); color: var(--danger); }
+
+.diary-card { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; padding: 0; }
+.diary-card img, .diary-card .photo-missing { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--line); }
+img[data-photo]:not([src]) { visibility: hidden; }
+.diary-body { padding: 12px 14px 14px; }
+.diary-meta { font-size: 12.5px; color: var(--sub); display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.diary-text { white-space: pre-wrap; word-break: break-word; }
+.photo-missing { display: grid; place-items: center; color: var(--sub); font-size: 13px; min-height: 120px; }
+.photo-full { width: 100%; max-height: 50vh; object-fit: contain; border-radius: 12px; background: var(--line); margin-bottom: 14px; display: block; }
+.photo-pick { position: relative; overflow: hidden; }
+.photo-pick input[type='file'] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.photo-preview { width: 100%; max-height: 40vh; object-fit: contain; border-radius: 12px; background: var(--line); margin-top: 10px; display: block; }
+
+/* ---------- 受診用まとめ(画面表示と印刷) ---------- */
+#report-root { display: none; }
+#report-root.open { display: block; position: fixed; inset: 0; z-index: 80; background: #e9e6ea; overflow: auto; color: #222; }
+.report-bar { position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 12px 10px; background: #fff; border-bottom: 1px solid #ddd; }
+.report-bar .btn { flex: 1; background: #fff; color: #222; border-color: #ccc; }
+.report-bar .btn.primary { background: #ee7b7b; color: #fff; border-color: transparent; }
+.report-sheet { max-width: 780px; margin: 12px auto 40px; background: #fff; padding: 22px 20px; font-size: 14px; line-height: 1.6; }
+.report-sheet h1 { font-size: 20px; margin-bottom: 2px; }
+.report-sheet h2 { font-size: 15px; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 2px solid #ee7b7b; }
+.report-sheet table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.report-sheet th, .report-sheet td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+.report-sheet th { background: #f5f0f0; font-weight: 700; }
+.report-sheet td.num, .report-sheet th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.report-sheet .rp-meta { color: #555; font-size: 12.5px; }
+.report-sheet .rp-hot { font-weight: 800; color: #c0392b; }
+.report-sheet .rp-note { font-size: 11.5px; color: #666; margin-top: 18px; }
+.report-sheet .rp-empty { color: #777; font-size: 13px; }
+@media print {
+  body.report-open #app, body.report-open #sheet-root, body.report-open #toast-root { display: none !important; }
+  #report-root.open { position: static; overflow: visible; background: #fff; }
+  .report-bar, .report-days { display: none !important; }
+  .report-sheet { margin: 0; padding: 0; max-width: none; }
+  .report-sheet h2 { break-after: avoid; }
+  .report-sheet table { break-inside: auto; }
+  .report-sheet tr { break-inside: avoid; }
+  @page { margin: 14mm; }
+}

@@ -13,5 +13,12 @@
       "database_name": "sukusuku-log-production",
       "database_id": "eeef20c0-b99c-4d92-b5e0-30a52474c2de"
     }
+  ],
+  // R2: 思い出日記の写真。キーは「家族ID/写真ID」
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "sukusuku-log-photos"
+    }
   ]
 }

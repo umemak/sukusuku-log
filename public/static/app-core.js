@@ -186,10 +186,11 @@
       '<div class="sheet-body" id="sheet-body">' + bodyHtml + '</div></div>';
     document.body.classList.add('sheet-open');
     BA.sheetHandler = handler || null;
+    if (BA.hydratePhotos) BA.hydratePhotos(root);
   };
   BA.setSheetBody = (html) => {
     const b = document.getElementById('sheet-body');
-    if (b) { const top = b.scrollTop; b.innerHTML = html; b.scrollTop = top; }
+    if (b) { const top = b.scrollTop; b.innerHTML = html; b.scrollTop = top; if (BA.hydratePhotos) BA.hydratePhotos(b); }
   };
   BA.closeSheet = () => {
     document.getElementById('sheet-root').innerHTML = '';
@@ -290,4 +291,84 @@
   };
 
   BA.destroyCharts = () => { BA.charts.forEach((c) => { try { c.destroy(); } catch (e) { /* noop */ } }); BA.charts = []; };
+
+  // ---------- 成長曲線(WHO Child Growth Standards の LMS 法) ----------
+  // ind: wfa(体重kg) / lhfa(身長cm) / hcfa(頭囲cm)、sex: boy / girl、days: 生後日数
+  BA.lms = (ind, sex, days) => {
+    const W = window.WHO;
+    if (!W || !W[ind] || !W[ind][sex] || days < 0) return null;
+    const t = W[ind][sex];
+    if (days > t[t.length - 1][0]) return null;
+    let lo = 0, hi = t.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (t[mid][0] <= days) lo = mid; else hi = mid; }
+    const a = t[lo], b = t[hi];
+    const f = b[0] === a[0] ? 0 : (days - a[0]) / (b[0] - a[0]);
+    return { L: a[1] + (b[1] - a[1]) * f, M: a[2] + (b[2] - a[2]) * f, S: a[3] + (b[3] - a[3]) * f };
+  };
+  BA.zscore = (x, p) => (p.L === 0 ? Math.log(x / p.M) / p.S : (Math.pow(x / p.M, p.L) - 1) / (p.L * p.S));
+  BA.valueAtZ = (z, p) => (p.L === 0 ? p.M * Math.exp(p.S * z) : p.M * Math.pow(1 + p.L * p.S * z, 1 / p.L));
+  BA.normCdf = (z) => {
+    // Abramowitz-Stegun 7.1.26
+    const x = Math.abs(z) / Math.SQRT2, t = 1 / (1 + 0.3275911 * x);
+    const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+    return 0.5 * (1 + (z < 0 ? -y : y));
+  };
+  // 計測値からパーセンタイル(0-100)を返す。範囲外や性別未設定は null
+  BA.percentile = (ind, sex, days, value) => {
+    if (sex !== 'boy' && sex !== 'girl') return null;
+    const p = BA.lms(ind, sex, days);
+    if (!p || !(value > 0)) return null;
+    return BA.normCdf(BA.zscore(value, p)) * 100;
+  };
+  BA.daysOld = (birthday, ymd) => Math.round((BA.parseYMD(ymd) - BA.parseYMD(birthday)) / BA.DAY);
+
+  // ---------- 写真(R2) ----------
+  BA.resizeImage = (file, maxEdge, quality) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const r = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * r)), h = Math.max(1, Math.round(img.naturalHeight * r));
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      c.toBlob((b) => { URL.revokeObjectURL(url); b ? resolve(b) : reject(new Error('写真を変換できませんでした')); }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('この形式の写真は読み込めません。別の写真をお試しください')); };
+    img.src = url;
+  });
+
+  BA.uploadPhoto = async (blob) => {
+    let res;
+    try {
+      res = await fetch('/api/photos', { method: 'POST', headers: { Authorization: 'Bearer ' + BA.state.token, 'Content-Type': 'image/jpeg' }, body: blob });
+    } catch (e) { throw new Error('通信できません。電波の良い場所でもう一度お試しください'); }
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* noop */ }
+    if (!res.ok) throw new Error((data && data.error) || '写真を送信できませんでした');
+    return data.photo_id;
+  };
+
+  // 認証ヘッダーが必要なので <img src> では読めない。blob にして表示する(メモリにキャッシュ)
+  const photoCache = new Map();
+  BA.photoUrl = (id) => {
+    if (photoCache.has(id)) return photoCache.get(id);
+    const p = fetch('/api/photos/' + id, { headers: { Authorization: 'Bearer ' + BA.state.token } })
+      .then((r) => { if (!r.ok) throw new Error('photo'); return r.blob(); })
+      .then((b) => URL.createObjectURL(b))
+      .catch(() => { photoCache.delete(id); return null; });
+    photoCache.set(id, p);
+    return p;
+  };
+  BA.hydratePhotos = (root) => {
+    (root || document).querySelectorAll('img[data-photo]').forEach((img) => {
+      if (img.dataset.loaded) return;
+      img.dataset.loaded = '1';
+      BA.photoUrl(img.dataset.photo).then((u) => {
+        if (u) img.src = u; else img.replaceWith(Object.assign(document.createElement('div'), { className: 'photo-missing', textContent: '写真を読み込めません' }));
+      });
+    });
+  };
 })();
