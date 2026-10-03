@@ -128,7 +128,7 @@
         return;
       }
       await BA.refresh();
-      BA.toast('家族に参加しました');
+      BA.toast(r.linked ? '「' + r.memberName + '」さんの端末として追加しました' : '家族に参加しました', { ms: r.linked ? 4000 : undefined });
     } catch (e) {
       err.textContent = e.message;
     } finally { btn.disabled = false; }

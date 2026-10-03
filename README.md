@@ -11,7 +11,7 @@
 - **GitHub**: https://github.com/umemak/sukusuku-log
 
 ## 現在できること
-- **家族共有**: ログイン不要。「家族を新しく作る」と8文字の家族コードが発行される。パートナーはコード(または `/?code=XXXXXXXX` の招待リンク)で参加。記録には「誰が記録したか」が残る。他の家族のデータにはアクセスできない。
+- **家族共有**: ログイン不要。「家族を新しく作る」と8文字の家族コードが発行される。パートナーはコード(または `/?code=XXXXXXXX` の招待リンク)で参加。**同じ人がPCなど別の端末を追加するときは、同じ呼び名で参加すると同じメンバーとして扱われる**(別の呼び名なら別メンバー)。記録には「誰が記録したか」が残る。他の家族のデータにはアクセスできない。
 - **記録の種類**: 母乳(左右)、ミルク(ml)、搾母乳(ml)、睡眠、おしっこ、うんち(状態)、体温、お風呂、薬、メモ
 - **ホーム**: 最後の授乳・睡眠・おむつからの経過時間、授乳/睡眠タイマー、ワンタップ記録(取り消し付き)、今日のまとめ
 - **記録タブ**: 日付ごとのタイムライン。タップで編集・削除。
@@ -29,7 +29,7 @@
 ## Data Architecture
 - **Storage**: Cloudflare D1(SQLite)。`migrations/0001_initial_schema.sql`, `0002_diary_foods.sql`
 - **Object storage**: Cloudflare R2(バケット `sukusuku-log-photos`、バインディング `PHOTOS`、キーは `<family_id>/<photo_id>`)
-- **Tables**: families / members / children / logs / growth / vaccinations / foods / diary / ai_usage(AI利用回数)
+- **Tables**: families / members / children / logs / growth / vaccinations / foods / diary / ai_usage(AI利用回数) / member_tokens(追加端末の鍵)
 - **WHO データ**: `public/static/who-lms.js`(Weight-for-age / Length(Height)-for-age / Head circumference-for-age の LMS 表、0〜5歳)
 - **認証**: 端末ごとのランダムトークン(localStorage)。DBにはSHA-256ハッシュのみ保存。全APIが家族IDで絞り込み。
 

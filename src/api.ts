@@ -101,12 +101,27 @@ api.post('/join', async (c) => {
   if (!family) return c.json({ error: '家族コードが見つかりません。入力を確認してください' }, 404)
 
   const token = randomToken()
+  const tokenHash = await sha256(token)
+
+  // 同じ呼び名のメンバーがいれば、その人の別の端末(PCなど)として追加する
+  const existing = await db
+    .prepare('SELECT id, name FROM members WHERE family_id = ? AND lower(name) = lower(?) ORDER BY created_at LIMIT 1')
+    .bind(family.id, memberName)
+    .first<{ id: string; name: string }>()
+  if (existing) {
+    await db
+      .prepare('INSERT INTO member_tokens (token_hash, member_id, created_at) VALUES (?, ?, ?)')
+      .bind(tokenHash, existing.id, now())
+      .run()
+    return c.json({ token, code, memberId: existing.id, linked: true, memberName: existing.name })
+  }
+
   const memberId = uuid()
   await db
     .prepare('INSERT INTO members (id, family_id, name, token_hash, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(memberId, family.id, memberName, await sha256(token), now())
+    .bind(memberId, family.id, memberName, tokenHash, now())
     .run()
-  return c.json({ token, code, memberId })
+  return c.json({ token, code, memberId, linked: false })
 })
 
 // ---------- 認証 ----------
@@ -117,10 +132,18 @@ api.use('*', async (c: Context<Env>, next: Next) => {
   const auth = c.req.header('Authorization') || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''
   if (!token) return c.json({ error: 'unauthorized' }, 401)
-  const m = await c.env.DB
+  const hash = await sha256(token)
+  let m = await c.env.DB
     .prepare('SELECT id, family_id FROM members WHERE token_hash = ?')
-    .bind(await sha256(token))
+    .bind(hash)
     .first<{ id: string; family_id: string }>()
+  if (!m) {
+    // 追加端末の鍵
+    m = await c.env.DB
+      .prepare('SELECT m.id AS id, m.family_id AS family_id FROM member_tokens t JOIN members m ON m.id = t.member_id WHERE t.token_hash = ?')
+      .bind(hash)
+      .first<{ id: string; family_id: string }>()
+  }
   if (!m) return c.json({ error: 'unauthorized' }, 401)
   c.set('familyId', m.family_id)
   c.set('memberId', m.id)
@@ -170,6 +193,7 @@ api.delete('/members/:id', async (c) => {
     .bind(id, c.get('familyId'))
     .run()
   if (!r.meta.changes) return c.json({ error: 'not found' }, 404)
+  await c.env.DB.prepare('DELETE FROM member_tokens WHERE member_id = ?').bind(id).run()
   return c.json({ ok: true })
 })
 

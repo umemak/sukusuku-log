@@ -100,7 +100,7 @@
       '<button class="btn primary block" data-act="ob-create"><i class="fas fa-plus"></i>はじめて使う(家族を新しく作る)</button></div>' +
       '<div class="card">' +
       '<h2><i class="fas fa-key"></i>家族コードで参加する</h2>' +
-      '<p class="muted" style="margin-bottom:10px">パートナーや家族から教えてもらったコードを入力すると、同じ記録を見られます。</p>' +
+      '<p class="muted" style="margin-bottom:10px">パートナーや家族から教えてもらったコードを入力すると、同じ記録を見られます。<br>すでに参加している人がPCなど別の端末を追加するときは、<b>同じ呼び名</b>を入れてください(同じ人として使えます)。</p>' +
       '<label class="field"><span>家族コード</span><input type="text" id="ob-code" maxlength="12" value="' + esc(code) + '" placeholder="例: K7M2QX9A" autocapitalize="characters" autocomplete="off" style="letter-spacing:.12em;font-weight:700"></label>' +
       '<button class="btn block" data-act="ob-join"><i class="fas fa-right-to-bracket"></i>この家族に参加する</button></div>' +
       '<p class="disclaimer">ログイン不要です。この端末にだけ保存される鍵で家族のデータにアクセスします。ブラウザのデータを消すと再度コードでの参加が必要です。記録内容は医療的な診断ではありません。</p>' +
