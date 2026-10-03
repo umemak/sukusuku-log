@@ -44,7 +44,11 @@ npm run db:migrate:local
 pm2 start ecosystem.config.cjs
 ```
 
-本番デプロイ(スキーマ変更時は先に `npm run db:migrate:prod`):
+本番デプロイは GitHub Actions(`.github/workflows/deploy.yml`)が自動で行う。`main` への push で、D1マイグレーション適用 → ビルド → Pages デプロイの順に実行される(Actions タブから手動実行も可)。
+必要な GitHub シークレット: `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`。
+マイグレーションはデプロイより先に走るため、旧バージョンのコードと両立する(後方互換な)変更にすること。
+
+手動でデプロイする場合(スキーマ変更時は先に `npm run db:migrate:prod`):
 ```
 npm run build && npx wrangler pages deploy dist --project-name sukusuku-log --branch main
 ```
