@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import api, { type Bindings } from './api'
+import { TOUCH_ICON_DATA_URI } from './touch-icon'
 
 const app = new Hono<{ Bindings: Bindings }>()
 
@@ -10,7 +11,7 @@ app.use('/api/*', async (c, next) => {
 })
 app.route('/api', api)
 
-const V = '10'
+const V = '11'
 
 const shell = `<!doctype html>
 <html lang="ja">
@@ -20,9 +21,9 @@ const shell = `<!doctype html>
   <title>すくすくログ - 新生児からの育児記録</title>
   <meta name="description" content="授乳・睡眠・おむつ・体温・成長・予防接種を、家族みんなで共有しながら記録できる育児ログ" />
   <meta name="theme-color" content="#fff6f2" />
-  <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="icon" type="image/png" href="/static/icon-192.png" />
-  <link rel="apple-touch-icon" href="/static/icon-192.png" />
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+  <link rel="icon" type="image/png" href="/static/icon-v2-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="${TOUCH_ICON_DATA_URI}" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="すくすくログ" />

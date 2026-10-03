@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#ffb199"/>
+      <stop offset="1" stop-color="#ee7b7b"/>
+    </linearGradient>
+    <radialGradient id="face" cx="0.4" cy="0.3" r="0.9">
+      <stop offset="0" stop-color="#fffaf5"/>
+      <stop offset="1" stop-color="#ffe6d6"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#4daa8a"/>
+      <stop offset="1" stop-color="#8bd8a8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="300" r="205" fill="#ffffff" opacity="0.14"/>
+  <!-- 芽(すくすく育つ) -->
+  <path d="M256 168 C256 140 254 122 250 106" fill="none" stroke="#3f9a7b" stroke-width="12" stroke-linecap="round"/>
+  <path d="M250 112 C214 118 186 100 176 66 C214 60 244 78 250 112 Z" fill="url(#leaf)"/>
+  <path d="M252 122 C284 120 312 98 318 66 C282 62 256 84 252 122 Z" fill="url(#leaf)"/>
+  <!-- 顔 -->
+  <ellipse cx="256" cy="440" rx="120" ry="12" fill="#c25a5a" opacity="0.18"/>
+  <circle cx="256" cy="300" r="140" fill="url(#face)"/>
+  <!-- ほっぺ -->
+  <circle cx="190" cy="330" r="26" fill="#ff9aa2" opacity="0.55"/>
+  <circle cx="322" cy="330" r="26" fill="#ff9aa2" opacity="0.55"/>
+  <!-- 目 -->
+  <ellipse cx="206" cy="290" rx="13" ry="16" fill="#3b3340"/>
+  <ellipse cx="306" cy="290" rx="13" ry="16" fill="#3b3340"/>
+  <circle cx="211" cy="283" r="4.5" fill="#fff"/>
+  <circle cx="311" cy="283" r="4.5" fill="#fff"/>
+  <!-- 口 -->
+  <path d="M232 332 Q256 358 280 332" fill="none" stroke="#3b3340" stroke-width="9" stroke-linecap="round"/>
+  <!-- 前髪 -->
+  <path d="M236 168 C246 150 266 150 276 168" fill="none" stroke="#e9b99a" stroke-width="8" stroke-linecap="round" opacity="0"/>
+</svg>

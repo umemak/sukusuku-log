@@ -96,3 +96,7 @@ npx wrangler pages secret put GEMINI_MODEL --project-name sukusuku-log
 - **Platform**: Cloudflare Pages
 - **Status**: ✅ Active(Cloudflare Pages プロジェクト `sukusuku-log` / D1 `sukusuku-log-production`)
 - **Tech Stack**: Hono + TypeScript + D1 + Vanilla JS + Chart.js + FontAwesome
+
+## アイコン
+- 元データ: `public/static/icon.svg`(芽を生やした赤ちゃんの顔)。PNG は `rsvg-convert` で書き出し(`icon-v2-*.png`、maskable 用は余白付き)。
+- iOS のホーム画面用 `apple-touch-icon` は、Cloudflare Access の認証に邪魔されないよう HTML に data URI で埋め込み(`src/touch-icon.ts`)。
