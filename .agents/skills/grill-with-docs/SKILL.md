@@ -43,27 +43,21 @@ Before posing any questions:
 Model the topic as a **design tree** where high-level choices branch into downstream technical and domain implications.
 
 ### 1. Identify the Frontier
-The **frontier** consists of all questions whose prerequisites are already settled.
-- Do not ask questions that depend on unresolved decisions from the same round.
-- Group the current frontier into a round of questions.
+The **frontier** consists of questions whose prerequisites are already settled.
+- Pick **exactly one question at a time** from the frontier to avoid overwhelming the user and to ensure deep alignment.
+- Prioritize high-level architectural / UX decisions before downstream implementation details.
 
-### 2. Format Each Round
-Present questions in a structured, actionable format with explicit recommendations:
+### 2. Format Each Question
+Present the single question in a structured, actionable format with explicit recommendations:
 
 ```markdown
-❓ **Q1** - **<Concise Question Title>**: <Detailed question body, explaining trade-offs or listing viable choices>
+❓ **Q<Number>** - **<Concise Question Title>**: <Detailed question body, explaining trade-offs or listing viable choices>
 
 ➡️ **Recommended**: <Your recommended choice and justification based on codebase context>
-
----
-
-❓ **Q2** - **<Concise Question Title>**: <Question body>
-
-➡️ **Recommended**: <Your recommended choice and justification>
 ```
 
 ### 3. Await User Input
-Stop after presenting the round. Wait for the user to respond before re-evaluating the frontier and proceeding to the next round.
+Stop after presenting the single question. Wait for the user to respond before re-evaluating the frontier and proceeding to the next question.
 
 ---
 

@@ -116,30 +116,107 @@
     const c = BA.child();
     const list = BA.data.diary || [];
     const header = V.header();
-    const cards = list.map((d) => {
-      const who = BA.memberName(d.member_id);
-      const commentBadge = d.comment_count
-        ? '<span class="badge" style="margin-left:auto"><i class="fas fa-comment"></i> ' + d.comment_count + '</span>'
-        : '';
-      return '<button class="diary-card" data-act="editdiary" data-id="' + d.id + '">' +
-        (d.photo_id ? '<img data-photo="' + d.photo_id + '" alt="思い出の写真">' : '') +
-        '<span class="diary-body"><span class="diary-meta"><span>' + esc(d.entry_date.replace(/-/g, '/')) + '</span><span class="badge">' + esc(ageAt(c.birthday, d.entry_date)) + '</span>' +
-        (who ? '<span>' + esc(who) + '</span>' : '') +
-        commentBadge + '</span>' +
-        (d.body ? '<span class="diary-text">' + esc(d.body) + '</span>' : '') + '</span></button>';
-    }).join('');
+    const mode = BA.state.diaryView === 'grid' ? 'grid' : 'card';
+    const selectedMonth = BA.state.diaryMonth || '';
+
+    // 年月セレクタ用のリスト生成(最新月〜誕生日月、出生前記録があればそこまで)
+    const months = [];
+    const now = new Date();
+    const curY = now.getFullYear();
+    const curM = now.getMonth() + 1;
+    let bY = curY, bM = curM;
+    if (c.birthday && /^\d{4}-\d{2}-\d{2}$/.test(c.birthday)) {
+      bY = parseInt(c.birthday.slice(0, 4), 10);
+      bM = parseInt(c.birthday.slice(5, 7), 10);
+    }
+    let minY = bY, minM = bM;
+    for (const d of list) {
+      if (d.entry_date && /^\d{4}-\d{2}/.test(d.entry_date)) {
+        const ey = parseInt(d.entry_date.slice(0, 4), 10);
+        const em = parseInt(d.entry_date.slice(5, 7), 10);
+        if (ey < minY || (ey === minY && em < minM)) {
+          minY = ey; minM = em;
+        }
+      }
+    }
+    let y = curY, m = curM;
+    while (y > minY || (y === minY && m >= minM)) {
+      const ym = y + '-' + (m < 10 ? '0' + m : m);
+      const repDate = ym + '-15';
+      const age = c.birthday ? ageAt(c.birthday, repDate) : '';
+      const label = y + '年' + m + '月' + (age ? ' (' + age + ')' : '');
+      months.push({ ym, label });
+      m--;
+      if (m < 1) { m = 12; y--; }
+    }
+
+    const monthOptions = '<option value="">すべて</option>' +
+      months.map((item) => '<option value="' + item.ym + '"' + (selectedMonth === item.ym ? ' selected' : '') + '>' + esc(item.label) + '</option>').join('');
+
+    const toolbar = '<div class="diary-toolbar">' +
+      '<select class="diary-month-select" data-act="setdiarymonth" aria-label="年月で絞り込み">' + monthOptions + '</select>' +
+      '<div class="diary-view-toggle" role="group" aria-label="表示形式切り替え">' +
+        '<button class="btn icon' + (mode === 'card' ? ' active' : '') + '" data-act="setdiaryview" data-mode="card" title="カード表示" aria-label="カード表示"><i class="fas fa-bars"></i></button>' +
+        '<button class="btn icon' + (mode === 'grid' ? ' active' : '') + '" data-act="setdiaryview" data-mode="grid" title="グリッド表示" aria-label="グリッド表示"><i class="fas fa-th-large"></i></button>' +
+      '</div></div>';
+
+    let contentHtml = '';
+    if (mode === 'grid') {
+      const photoEntries = list.filter((d) => d.photo_id);
+      if (photoEntries.length === 0) {
+        contentHtml = '<div class="card"><div class="empty">' +
+          (selectedMonth ? 'この月の写真付きの思い出はまだありません。' : '写真付きの思い出がまだありません。<br>最初の1枚を残してみましょう。') +
+          '</div></div>';
+      } else {
+        const gridItems = photoEntries.map((d) => {
+          const dateStr = d.entry_date ? d.entry_date.slice(5).replace(/-/g, '/') : '';
+          const commentBadge = d.comment_count
+            ? '<span class="diary-grid-comments"><i class="fas fa-comment"></i> ' + d.comment_count + '</span>'
+            : '';
+          return '<button class="diary-grid-item" data-act="editdiary" data-id="' + d.id + '" aria-label="' + esc(d.entry_date) + 'の思い出">' +
+            '<img data-photo="' + d.photo_id + '" data-thumb="1" alt="思い出の写真">' +
+            '<span class="diary-grid-date">' + esc(dateStr) + '</span>' +
+            commentBadge +
+            '</button>';
+        }).join('');
+        contentHtml = '<section class="diary-grid" aria-label="写真一覧">' + gridItems + '</section>';
+      }
+    } else {
+      if (list.length === 0) {
+        contentHtml = '<div class="card"><div class="empty">' +
+          (selectedMonth ? 'この月の思い出はまだありません。' : 'まだ思い出がありません。<br>最初の1枚を残してみましょう。') +
+          '</div></div>';
+      } else {
+        const cards = list.map((d) => {
+          const who = BA.memberName(d.member_id);
+          const commentBadge = d.comment_count
+            ? '<span class="badge" style="margin-left:auto"><i class="fas fa-comment"></i> ' + d.comment_count + '</span>'
+            : '';
+          return '<button class="diary-card" data-act="editdiary" data-id="' + d.id + '">' +
+            (d.photo_id ? '<img data-photo="' + d.photo_id + '" alt="思い出の写真">' : '') +
+            '<span class="diary-body"><span class="diary-meta"><span>' + esc(d.entry_date.replace(/-/g, '/')) + '</span><span class="badge">' + esc(ageAt(c.birthday, d.entry_date)) + '</span>' +
+            (who ? '<span>' + esc(who) + '</span>' : '') +
+            commentBadge + '</span>' +
+            (d.body ? '<span class="diary-text">' + esc(d.body) + '</span>' : '') + '</span></button>';
+        }).join('');
+        contentHtml = '<section class="diary-list" style="display:grid;gap:12px" aria-label="思い出一覧">' + cards + '</section>';
+      }
+    }
+
     return header + '<main id="view">' +
       '<section class="card"><h2><i class="fas fa-book-open" style="color:var(--primary)"></i>思い出日記</h2>' +
       '<p class="muted" style="margin-bottom:10px">成長の瞬間を写真とひとことで残して、家族みんなで見返せます。</p>' +
-      (isViewer ? '' : '<button class="btn primary block" data-act="adddiary"><i class="fas fa-camera"></i>思い出を残す</button>') + '</section>' +
-      (cards ? '<section class="diary-list" style="display:grid;gap:12px" aria-label="思い出一覧">' + cards + '</section>' : '<div class="card"><div class="empty">まだ思い出がありません。<br>最初の1枚を残してみましょう。</div></div>') +
+      (isViewer ? '' : '<button class="btn primary block" data-act="adddiary"><i class="fas fa-camera"></i>思い出を残す</button>') +
+      toolbar +
+      '</section>' +
+      contentHtml +
       '</main>' + V.tabbar();
   };
 
   BA.openDiary = function (entry, prefill) {
     if (!entry) {
       if (BA.isViewer()) return;
-      const st = { date: BA.ymd(Date.now()), body: (prefill && prefill.body) || '', blob: null, preview: null };
+      const st = { date: BA.ymd(Date.now()), body: (prefill && prefill.body) || '', blob: null, thumbBlob: null, preview: null };
       const revoke = () => { if (st.preview) { URL.revokeObjectURL(st.preview); st.preview = null; } };
       function renderNew() {
         const photo = '<label class="btn block photo-pick"><i class="fas fa-camera"></i>' + (st.blob ? '写真を選びなおす' : '写真を選ぶ・撮影する') +
@@ -159,8 +236,12 @@
           try {
             const blob = await BA.resizeImage(el.files[0], 1600, 0.82);
             if (blob.size > 4 * 1024 * 1024) throw new Error('写真が大きすぎます。別の写真をお試しください');
+            let thumbBlob = null;
+            try {
+              thumbBlob = await BA.resizeImage(el.files[0], 320, 0.80);
+            } catch (te) { /* noop */ }
             revoke();
-            st.blob = blob; st.preview = URL.createObjectURL(blob);
+            st.blob = blob; st.thumbBlob = thumbBlob; st.preview = URL.createObjectURL(blob);
             re();
           } catch (e) { setErr(e.message); }
         },
@@ -170,7 +251,10 @@
             const text = (st.body || '').trim();
             if (!text && !st.blob) throw new Error('写真かひとことを入力してください');
             let photoId = null;
-            if (st.blob) photoId = await BA.uploadPhoto(st.blob);
+            if (st.blob) {
+              photoId = await BA.uploadPhoto(st.blob);
+              if (st.thumbBlob) await BA.uploadPhotoThumb(photoId, st.thumbBlob);
+            }
             try {
               await BA.api('POST', '/children/' + BA.child().id + '/diary', { entry_date: st.date, body: text, photo_id: photoId });
             } catch (e) {

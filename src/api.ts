@@ -527,7 +527,11 @@ api.delete('/children/:id', async (c) => {
     db.prepare('DELETE FROM ai_chat_messages WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM children WHERE id = ? AND family_id = ?').bind(id, fid)
   ])
-  const keys = photos.results.map((p) => `${fid}/${p.photo_id}`)
+  const keys: string[] = []
+  for (const p of photos.results) {
+    keys.push(`${fid}/${p.photo_id}`)
+    keys.push(`${fid}/${p.photo_id}_thumb`)
+  }
   if (keys.length) await c.env.PHOTOS.delete(keys)
   return c.json({ ok: true })
 })
@@ -872,10 +876,35 @@ api.post('/photos', async (c) => {
   return c.json({ photo_id: photoId })
 })
 
+api.put('/photos/:id/thumb', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
+  const id = c.req.param('id')
+  if (!ID_RE.test(id)) return c.json({ error: 'not found' }, 404)
+  const len = Number(c.req.header('Content-Length') || 0)
+  if (len > 512 * 1024) return c.json({ error: 'サムネイルが大きすぎます' }, 413)
+  const buf = await c.req.arrayBuffer()
+  if (buf.byteLength === 0) return c.json({ error: 'サムネイルが空です' }, 400)
+  if (buf.byteLength > 512 * 1024) return c.json({ error: 'サムネイルが大きすぎます' }, 413)
+  const b = new Uint8Array(buf, 0, 3)
+  if (!(b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff)) return c.json({ error: 'JPEG形式のサムネイルのみ登録できます' }, 400)
+  const orig = await c.env.PHOTOS.head(`${c.get('familyId')}/${id}`)
+  if (!orig) return c.json({ error: '写真が見つかりません' }, 404)
+  await c.env.PHOTOS.put(`${c.get('familyId')}/${id}_thumb`, buf, { httpMetadata: { contentType: 'image/jpeg' } })
+  return c.json({ ok: true })
+})
+
 api.get('/photos/:id', async (c) => {
   const id = c.req.param('id')
   if (!ID_RE.test(id)) return c.json({ error: 'not found' }, 404)
-  const obj = await c.env.PHOTOS.get(`${c.get('familyId')}/${id}`)
+  const isThumb = c.req.query('thumb') === '1'
+  let obj = null
+  if (isThumb) {
+    obj = await c.env.PHOTOS.get(`${c.get('familyId')}/${id}_thumb`)
+  }
+  if (!obj) {
+    obj = await c.env.PHOTOS.get(`${c.get('familyId')}/${id}`)
+  }
   if (!obj) return c.json({ error: 'not found' }, 404)
   return new Response(obj.body, {
     headers: {
@@ -896,7 +925,9 @@ api.delete('/photos/:id', async (c) => {
     .prepare('SELECT 1 FROM diary WHERE photo_id = ? AND family_id = ?')
     .bind(id, c.get('familyId'))
     .first()
-  if (!used) await c.env.PHOTOS.delete(`${c.get('familyId')}/${id}`)
+  if (!used) {
+    await c.env.PHOTOS.delete([`${c.get('familyId')}/${id}`, `${c.get('familyId')}/${id}_thumb`])
+  }
   return c.json({ ok: true })
 })
 
@@ -905,6 +936,23 @@ api.delete('/photos/:id', async (c) => {
 api.get('/children/:id/diary', async (c) => {
   const childId = c.req.param('id')
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
+  const fid = c.get('familyId')
+  const month = c.req.query('month')
+  if (month && /^\d{4}-\d{2}$/.test(month)) {
+    const from = `${month}-01`
+    const to = `${month}-31`
+    const rs = await c.env.DB
+      .prepare(
+        `SELECT d.id, d.member_id, d.entry_date, d.body, d.photo_id,
+          (SELECT COUNT(*) FROM diary_comments c WHERE c.diary_id = d.id AND c.family_id = d.family_id) AS comment_count
+         FROM diary d
+         WHERE d.child_id = ? AND d.family_id = ? AND d.entry_date >= ? AND d.entry_date <= ?
+         ORDER BY d.entry_date DESC, d.created_at DESC`
+      )
+      .bind(childId, fid, from, to)
+      .all()
+    return c.json({ diary: rs.results })
+  }
   const limit = Math.min(Math.max(num(c.req.query('limit')) ?? 100, 1), 300)
   const rs = await c.env.DB
     .prepare(
@@ -913,7 +961,7 @@ api.get('/children/:id/diary', async (c) => {
        FROM diary d
        WHERE d.child_id = ? AND d.family_id = ? ORDER BY d.entry_date DESC, d.created_at DESC LIMIT ?`
     )
-    .bind(childId, c.get('familyId'), limit)
+    .bind(childId, fid, limit)
     .all()
   return c.json({ diary: rs.results })
 })
@@ -977,7 +1025,9 @@ api.delete('/diary/:id', async (c) => {
     c.env.DB.prepare('DELETE FROM diary_comments WHERE diary_id = ? AND family_id = ?').bind(c.req.param('id'), c.get('familyId')),
     c.env.DB.prepare('DELETE FROM diary WHERE id = ? AND family_id = ?').bind(c.req.param('id'), c.get('familyId'))
   ])
-  if (row.photo_id) await c.env.PHOTOS.delete(`${c.get('familyId')}/${row.photo_id}`)
+  if (row.photo_id) {
+    await c.env.PHOTOS.delete([`${c.get('familyId')}/${row.photo_id}`, `${c.get('familyId')}/${row.photo_id}_thumb`])
+  }
   return c.json({ ok: true })
 })
 

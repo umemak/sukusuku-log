@@ -38,7 +38,10 @@
       jobs.push(BA.api('GET', '/children/' + c.id + '/vaccinations'));
       jobs.push(BA.api('GET', '/children/' + c.id + '/foods'));
     }
-    if (st.tab === 'memory') jobs.push(BA.api('GET', '/children/' + c.id + '/diary'));
+    if (st.tab === 'memory') {
+      const q = st.diaryMonth ? '?month=' + encodeURIComponent(st.diaryMonth) : '';
+      jobs.push(BA.api('GET', '/children/' + c.id + '/diary' + q));
+    }
     if (st.tab === 'family') jobs.push(BA.api('GET', '/invitations').catch(() => ({ invitations: [] })));
     // 補助の「申請済み」チェック(ホームの児童手当のお知らせと、健康タブで使う)
     const subsP = (st.tab === 'health' || st.tab === 'home') ? BA.api('GET', '/children/' + c.id + '/subsidies').catch(() => null) : null;
@@ -272,7 +275,7 @@
     },
     switchchild: () => BA.openChildSwitcher(),
     refresh: () => BA.refresh(),
-    tab: (el) => { st.tab = el.dataset.tab; if (st.tab === 'timeline') st.dayOffset = 0; window.scrollTo(0, 0); BA.refresh(); },
+    tab: (el) => { st.tab = el.dataset.tab; if (st.tab === 'timeline') st.dayOffset = 0; if (st.tab === 'memory') st.diaryMonth = ''; window.scrollTo(0, 0); BA.refresh(); },
     open: (el) => {
       if (BA.isViewer()) return;
       BA.openEntry(el.dataset.type);
@@ -430,6 +433,28 @@
       BA.openDiary(null);
     },
     editdiary: (el) => { const d = (BA.data.diary || []).find((x) => x.id === el.dataset.id); if (d) BA.openDiary(d); },
+    setdiaryview: (el) => {
+      const mode = el.dataset.mode;
+      if (!mode) return;
+      st.diaryView = mode;
+      BA.ls.set('ba_diary_view', mode);
+      BA.render();
+      BA.hydratePhotos();
+    },
+    setdiarymonth: async (el) => {
+      st.diaryMonth = el.value || '';
+      const c = BA.child();
+      if (!c) return;
+      try {
+        const q = st.diaryMonth ? '?month=' + encodeURIComponent(st.diaryMonth) : '';
+        const res = await BA.api('GET', '/children/' + c.id + '/diary' + q);
+        BA.data.diary = res.diary;
+        BA.render();
+        BA.hydratePhotos();
+      } catch (e) {
+        BA.errToast(e);
+      }
+    },
     report: () => BA.openReport(),
     'report-close': () => BA.closeReport(),
     'report-print': () => BA.printReport(),
@@ -470,7 +495,16 @@
 
   document.addEventListener('change', (ev) => {
     const el = ev.target;
-    if (el instanceof Element && BA.sheetHandler && BA.sheetHandler.change && document.getElementById('sheet-root').contains(el)) BA.sheetHandler.change(el);
+    if (!(el instanceof Element)) return;
+    const sheetRoot = document.getElementById('sheet-root');
+    if (sheetRoot && sheetRoot.contains(el)) {
+      if (BA.sheetHandler && BA.sheetHandler.change) BA.sheetHandler.change(el);
+      return;
+    }
+    const act = el.closest('[data-act]');
+    if (!act || act.disabled) return;
+    const fn = actions[act.dataset.act];
+    if (fn) fn(act);
   });
 
   document.addEventListener('keydown', (ev) => {

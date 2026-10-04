@@ -35,6 +35,8 @@
     statDays: 7,
     healthTab: 'growth',
     growthMetric: 'weight',
+    diaryView: ls.get('ba_diary_view') || 'card',
+    diaryMonth: '',
     obRole: 'editor'
   };
   BA.data = {};
@@ -365,22 +367,34 @@
     return data.photo_id;
   };
 
+  BA.uploadPhotoThumb = async (id, thumbBlob) => {
+    try {
+      await fetch('/api/photos/' + id + '/thumb', { method: 'PUT', headers: { Authorization: 'Bearer ' + BA.state.token, 'Content-Type': 'image/jpeg' }, body: thumbBlob });
+    } catch (e) {
+      /* noop, fallback exists */
+    }
+  };
+
   // 認証ヘッダーが必要なので <img src> では読めない。blob にして表示する(メモリにキャッシュ)
   const photoCache = new Map();
-  BA.photoUrl = (id) => {
-    if (photoCache.has(id)) return photoCache.get(id);
-    const p = fetch('/api/photos/' + id, { headers: { Authorization: 'Bearer ' + BA.state.token } })
+  BA.photoUrl = (id, isThumb) => {
+    const key = (isThumb ? 'thumb:' : 'full:') + id;
+    if (photoCache.has(key)) return photoCache.get(key);
+    const url = '/api/photos/' + id + (isThumb ? '?thumb=1' : '');
+    const p = fetch(url, { headers: { Authorization: 'Bearer ' + BA.state.token } })
       .then((r) => { if (!r.ok) throw new Error('photo'); return r.blob(); })
       .then((b) => URL.createObjectURL(b))
-      .catch(() => { photoCache.delete(id); return null; });
-    photoCache.set(id, p);
+      .catch(() => { photoCache.delete(key); return null; });
+    photoCache.set(key, p);
     return p;
   };
   BA.hydratePhotos = (root) => {
     (root || document).querySelectorAll('img[data-photo]').forEach((img) => {
-      if (img.dataset.loaded) return;
-      img.dataset.loaded = '1';
-      BA.photoUrl(img.dataset.photo).then((u) => {
+      const isThumb = !!img.dataset.thumb;
+      const key = (isThumb ? 'thumb:' : 'full:') + img.dataset.photo;
+      if (img.dataset.loadedKey === key) return;
+      img.dataset.loadedKey = key;
+      BA.photoUrl(img.dataset.photo, isThumb).then((u) => {
         if (u) img.src = u; else img.replaceWith(Object.assign(document.createElement('div'), { className: 'photo-missing', textContent: '写真を読み込めません' }));
       });
     });
