@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { secureHeaders } from 'hono/secure-headers'
 import api, { type Bindings } from './api'
 import { TOUCH_ICON_DATA_URI } from './touch-icon'
 
@@ -6,6 +7,25 @@ declare const __BUILD_ID__: string
 const V: string = typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : 'dev'
 
 const app = new Hono<{ Bindings: Bindings }>()
+
+// セキュリティヘッダーの適用
+app.use(
+  '*',
+  secureHeaders({
+    xFrameOptions: 'DENY',
+    xContentTypeOptions: 'nosniff',
+    referrerPolicy: 'strict-origin-when-cross-origin',
+    contentSecurityPolicy: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+      fontSrc: ["'self'", 'https://cdn.jsdelivr.net'],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      connectSrc: ["'self'"],
+      mediaSrc: ["'self'", 'blob:']
+    }
+  })
+)
 
 // API は常にキャッシュさせない(家族間の共有データを最新に保つ)
 app.use('/api/*', async (c, next) => {
@@ -41,7 +61,7 @@ const shell = `<!doctype html>
       } catch (e) {}
     })();
   </script>
-  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous" />
   <link href="/static/style.css?v=${V}" rel="stylesheet" />
 </head>
 <body>
@@ -50,7 +70,7 @@ const shell = `<!doctype html>
   <div id="report-root"></div>
   <div id="toast-root" role="status" aria-live="polite"></div>
   <noscript>このアプリを使うには JavaScript を有効にしてください。</noscript>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous" defer></script>
   <script src="/static/who-lms.js?v=${V}" defer></script>
   <script src="/static/app-core.js?v=${V}" defer></script>
   <script src="/static/app-sheets.js?v=${V}" defer></script>
