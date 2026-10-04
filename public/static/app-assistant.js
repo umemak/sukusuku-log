@@ -49,8 +49,7 @@
 
     function render() {
       let h = '<div id="asst-root">';
-      h += '<div class="asst-top"><span class="muted">' + esc(child.name) + 'の記録について聞けます' +
-        (BA.ai.limit ? '(今日あと' + BA.ai.remaining + '回・家族共通)' : '') + '</span>' +
+      h += '<div class="asst-top"><span class="muted">' + esc(child.name) + 'の記録について聞けます</span>' +
         (st.messages && st.messages.length ? '<button class="asst-clear" data-act="clear">' + (st.confirmClear ? '本当に消す?' : '<i class="fas fa-trash"></i>履歴をクリア') + '</button>' : '') + '</div>';
       h += '<div class="asst-list" id="asst-list" aria-live="polite">';
       if (st.messages === null) {
@@ -92,7 +91,6 @@
         try {
           const r = await postChat(child.id, text);
           if (!alive()) return;
-          if (typeof r.remaining === 'number') BA.ai.remaining = r.remaining;
           st.messages = (st.messages || []).concat(r.messages || []).slice(-50);
         } catch (e) {
           if (!alive()) return;

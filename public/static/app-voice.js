@@ -6,7 +6,7 @@
   const { mountSheet, guard } = BA.ui;
 
   const MAX_SEC = 30;
-  BA.ai = { enabled: false, remaining: 0, limit: 0, loaded: false };
+  BA.ai = { enabled: false, loaded: false };
 
   // 画面を開いたときに一度だけ利用可否を確認(未設定ならマイクボタンを出さない)
   BA.loadAiStatus = async function () {
@@ -15,7 +15,7 @@
     try {
       const r = await BA.api('GET', '/ai/status');
       const changed = r.enabled !== BA.ai.enabled;
-      BA.ai.enabled = !!r.enabled; BA.ai.remaining = r.remaining; BA.ai.limit = r.limit;
+      BA.ai.enabled = !!r.enabled;
       if (changed && !BA.sheetOpen() && BA.state.tab === 'home') BA.render();
     } catch (e) { BA.ai.loaded = false; }
   };
@@ -137,7 +137,6 @@
       stream = null; rec = null;
     }
 
-    const remainText = () => BA.ai.limit ? '<p class="muted voice-note">今日あと ' + BA.ai.remaining + ' 回まで使えます</p>' : '';
     const disclaimer = '<p class="muted voice-note"><i class="fas fa-shield-halved"></i> 音声・文章はGoogleのAIに送って記録の抽出だけに使います(保存はしません)。医療的な判断はしません。</p>';
 
     function render() {
@@ -149,7 +148,7 @@
           '<button class="voice-mic" data-act="rec" aria-label="録音を始める"><i class="fas fa-microphone"></i></button>' +
           '<p class="voice-hint">タップして話す</p>' +
           '<div class="btn-row"><button class="btn soft" data-act="totext"><i class="fas fa-keyboard"></i>文字で入力</button></div>' +
-          remainText() + disclaimer;
+          disclaimer;
       } else if (st.phase === 'recording') {
         h += '<p class="voice-lead">聞いています… 話し終わったら止めてください</p>' +
           '<button class="voice-mic rec" data-act="stop" aria-label="録音を止める"><i class="fas fa-stop"></i></button>' +
@@ -160,7 +159,7 @@
       } else if (st.phase === 'text') {
         h += '<label class="field"><span>話す代わりに文章で</span><textarea id="voice-text" data-bind="text" maxlength="500" rows="4" placeholder="例: 10時にミルク120ml、そのあとおしっこ。体温は36.8度">' + esc(st.text) + '</textarea></label>' +
           '<div class="btn-row">' + (canRecord() ? '<button class="btn soft" data-act="toidle"><i class="fas fa-microphone"></i>声で入力</button>' : '') +
-          '<button class="btn primary" data-act="sendtext">記録に変換</button></div>' + remainText() + disclaimer;
+          '<button class="btn primary" data-act="sendtext">記録に変換</button></div>' + disclaimer;
       } else if (st.phase === 'confirm') {
         h += '<p class="voice-lead" style="text-align:left">この内容で記録します。まちがいがないか確認してください。</p>';
         if (st.transcript) h += '<div class="voice-tr"><i class="fas fa-quote-left"></i> ' + esc(st.transcript) + '</div>';
@@ -205,7 +204,6 @@
         try {
           const r = await postParse(body, ct);
           if (!alive()) return;
-          BA.ai.remaining = r.remaining;
           st.transcript = r.transcript || ''; st.unclear = r.unclear || '';
           st.cands = (r.entries || []).map(toCand);
           st.phase = 'confirm';

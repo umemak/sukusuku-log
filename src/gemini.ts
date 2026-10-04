@@ -163,7 +163,7 @@ export async function parseCare(env: GeminiEnv, input: Input, localNow: string):
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 300)
     console.error('gemini error', res.status, detail)
-    if (res.status === 429) throw new GeminiError(503, 'AIの利用が混み合っています。しばらくしてからお試しください')
+    if (res.status === 429) throw new GeminiError(503, 'AIの利用上限に達したか、混み合っています。しばらく待ってからもう一度お試しください')
     if (res.status === 401 || res.status === 403) throw new GeminiError(503, 'AIの設定に問題があります。APIキーを確認してください')
     throw new GeminiError(502, 'AIから正しい応答が得られませんでした。もう一度お試しください')
   }
@@ -301,7 +301,7 @@ export async function askAssistant(
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 300)
     console.error('gemini error', res.status, detail)
-    if (res.status === 429) throw new GeminiError(503, 'AIの利用が混み合っています。しばらくしてからお試しください')
+    if (res.status === 429) throw new GeminiError(503, 'AIの利用上限に達したか、混み合っています。しばらく待ってからもう一度お試しください')
     if (res.status === 401 || res.status === 403) throw new GeminiError(503, 'AIの設定に問題があります。APIキーを確認してください')
     throw new GeminiError(502, 'AIから正しい応答が得られませんでした。もう一度お試しください')
   }

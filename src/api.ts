@@ -392,7 +392,6 @@ api.post('/families/discard', async (c) => {
   }
   await db.batch([
     db.prepare('DELETE FROM member_tokens WHERE member_id IN (SELECT id FROM members WHERE family_id = ?)').bind(fid),
-    db.prepare('DELETE FROM ai_usage WHERE family_id = ?').bind(fid),
     db.prepare('DELETE FROM ai_chat_messages WHERE family_id = ?').bind(fid),
     db.prepare('DELETE FROM invitations WHERE family_id = ?').bind(fid),
     db.prepare('DELETE FROM members WHERE family_id = ?').bind(fid),
@@ -1065,13 +1064,10 @@ api.delete('/diary/comments/:id', async (c) => {
 })
 
 // ---------- AI(音声・文章 → 記録の候補) ----------
-// APIキーはサーバーのシークレットにだけ置く。家族ごとに1日あたりの回数を制限する。
+// APIキーはサーバーのシークレットにだけ置く。
 
-const AI_DAILY_LIMIT = 40
 const MAX_AUDIO_BYTES = 3 * 1024 * 1024
 const AUDIO_MIMES = ['audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp3', 'audio/mpeg', 'audio/aac', 'audio/m4a', 'audio/mp4', 'audio/x-m4a', 'audio/flac']
-
-const jstDay = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
 
 function localNowText(tzMin: number): string {
   const d = new Date(Date.now() - tzMin * 60000) // getTimezoneOffset は UTC との差(分)で、日本は -540
@@ -1080,25 +1076,17 @@ function localNowText(tzMin: number): string {
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} (${wd}曜日)`
 }
 
-async function aiUsed(db: D1Database, familyId: string): Promise<number> {
-  const r = await db.prepare('SELECT count FROM ai_usage WHERE family_id = ? AND day = ?').bind(familyId, jstDay()).first<{ count: number }>()
-  return r?.count ?? 0
-}
-
 api.get('/ai/status', async (c) => {
-  const enabled = !!c.env.GEMINI_API_KEY
-  const used = enabled ? await aiUsed(c.env.DB, c.get('familyId')) : 0
-  return c.json({ enabled, limit: AI_DAILY_LIMIT, remaining: Math.max(0, AI_DAILY_LIMIT - used) })
+  return c.json({ enabled: !!c.env.GEMINI_API_KEY })
 })
 
 api.post('/ai/parse', async (c) => {
   const denied = requireEditor(c)
   if (denied) return denied
   if (!c.env.GEMINI_API_KEY) return c.json({ error: 'AI機能はまだ設定されていません' }, 503)
-  const familyId = c.get('familyId')
   const tz = Math.max(-840, Math.min(840, num(c.req.query('tz')) ?? -540))
 
-  // 入力の検証(回数を消費する前に弾く)
+  // 入力の検証
   const ct = (c.req.header('Content-Type') || '').split(';')[0].trim().toLowerCase()
   let input: Parameters<typeof parseCare>[1]
   if (ct === 'application/json') {
@@ -1117,42 +1105,14 @@ api.post('/ai/parse', async (c) => {
     return c.json({ error: '対応していない入力です' }, 415)
   }
 
-  // 回数を先に確保(同時リクエストでも超えないよう、加算してから判定)
-  const quota = await reserveAi(c.env.DB, familyId)
-  if (!quota.ok) {
-    return c.json({ error: `AI入力は1日${AI_DAILY_LIMIT}回までです。明日またお使いください(手入力は何度でもできます)` }, 429)
-  }
-
   try {
     const result = await parseCare(c.env, input, localNowText(tz))
-    return c.json({ ...result, remaining: quota.remaining })
+    return c.json(result)
   } catch (e) {
-    await quota.refund()
     if (e instanceof GeminiError) return c.json({ error: e.userMessage }, e.status as 502 | 503 | 504)
     throw e
   }
 })
-
-// 家族×日の利用回数を1つ確保する。上限超えなら確保せずに ok:false
-async function reserveAi(db: D1Database, familyId: string) {
-  const day = jstDay()
-  const row = await db
-    .prepare(
-      `INSERT INTO ai_usage (family_id, day, count) VALUES (?, ?, 1)
-       ON CONFLICT(family_id, day) DO UPDATE SET count = count + 1 RETURNING count`
-    )
-    .bind(familyId, day)
-    .first<{ count: number }>()
-  const refund = async () => {
-    await db.prepare('UPDATE ai_usage SET count = MAX(count - 1, 0) WHERE family_id = ? AND day = ?').bind(familyId, day).run()
-  }
-  const count = row?.count ?? 1
-  if (count > AI_DAILY_LIMIT) {
-    await refund()
-    return { ok: false as const }
-  }
-  return { ok: true as const, remaining: Math.max(0, AI_DAILY_LIMIT - count), refund }
-}
 
 // ---------- AIアシスタント(対話・成長レター) ----------
 // 履歴はメンバー本人だけが読める。端末をまたいで引き継げるようD1に保存し、直近50件だけ残す(ADR 0003)
@@ -1206,15 +1166,11 @@ api.post('/ai/chat', async (c) => {
   const history = hist.results.reverse()
   while (history.length && history[0].role !== 'user') history.shift() // 会話は必ず user から始める
 
-  const quota = await reserveAi(db, familyId)
-  if (!quota.ok) return c.json({ error: `AIの利用は1日${AI_DAILY_LIMIT}回までです(家族全体)。明日またお使いください` }, 429)
-
   let result: Awaited<ReturnType<typeof askAssistant>>
   try {
     const context = await buildAssistantContext(db, familyId, childId, tz)
     result = await askAssistant(c.env, history, text, localNowText(tz), context)
   } catch (e) {
-    await quota.refund()
     if (e instanceof GeminiError) return c.json({ error: e.userMessage }, e.status as 502 | 503 | 504)
     throw e
   }
@@ -1236,7 +1192,7 @@ api.post('/ai/chat', async (c) => {
       )
       .bind(memberId, memberId, CHAT_KEEP)
   ])
-  return c.json({ messages: [userMsg, modelMsg], remaining: quota.remaining })
+  return c.json({ messages: [userMsg, modelMsg] })
 })
 
 // AIに渡す記録の要約を組み立てる(1回の呼び出しで答えられるよう、よく聞かれる範囲をまとめて渡す)
