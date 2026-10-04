@@ -83,33 +83,20 @@
   };
 
   // ---------- オンボーディング ----------
-  V.onboard = function (prefill, prefillReadonly) {
+  V.onboard = function (prefill) {
     const code = prefill || '';
     const mode = BA.state.obMode || (code ? 'join' : 'choose');
-    if (prefillReadonly && !BA.state.obRoleTouched) {
-      BA.state.obRole = 'viewer';
-    }
-    const role = BA.state.obRole || 'editor';
-    const isViewer = role === 'viewer';
     const head = '<div class="logo"><i class="fas fa-baby"></i></div><h1>すくすくログ</h1>';
     const back = '<button class="link-btn ob-back" data-act="ob-go" data-mode="choose"><i class="fas fa-arrow-left"></i> 最初の画面に戻る</button>';
-    const foot = '<p class="disclaimer">ログイン不要です。この端末にだけ保存される鍵で家族のデータにアクセスします。ブラウザのデータを消すと再度コードでの参加が必要です。記録内容は医療的な診断ではありません。</p>';
+    const foot = '<p class="disclaimer">ログイン不要です。この端末にだけ保存される鍵で家族のデータにアクセスします。ブラウザのデータを消すと再度招待コードでの参加が必要です。記録内容は医療的な診断ではありません。</p>';
 
     if (mode === 'join') {
       return '<div class="onboard">' + back + head +
-        '<p class="lead">家族コードで参加します</p>' +
+        '<p class="lead">招待コードで参加します</p>' +
         '<div class="card">' +
-        '<label class="field"><span>1. 家族コード(8文字)</span><input type="text" id="ob-code" maxlength="12" value="' + esc(code) + '" placeholder="例: K7M2QX9A" autocapitalize="characters" autocomplete="off" style="letter-spacing:.12em;font-weight:700"></label>' +
+        '<label class="field"><span>1. 招待コード(8文字)</span><input type="text" id="ob-code" maxlength="12" value="' + esc(code) + '" placeholder="例: K7M2QX9A" autocapitalize="characters" autocomplete="off" style="letter-spacing:.12em;font-weight:700"></label>' +
         '<label class="field"><span>2. あなたの呼び名(表示名)</span><input type="text" id="ob-name" maxlength="30" placeholder="例: パパ、ママ、おじいちゃん" autocomplete="nickname"></label>' +
-        '<div class="field-label">3. 参加モード</div>' +
-        '<div class="seg" role="group" aria-label="参加モード" style="margin-bottom:6px">' +
-        '<button type="button" data-act="ob-role" data-role="editor" aria-pressed="' + (!isViewer) + '"><i class="fas fa-pen"></i> 記録・閲覧</button>' +
-        '<button type="button" data-act="ob-role" data-role="viewer" aria-pressed="' + isViewer + '"><i class="fas fa-eye"></i> 閲覧のみ(記録しない)</button>' +
-        '</div>' +
-        '<p class="muted" style="margin:0 0 12px;font-size:12px">' +
-        (isViewer ? 'お世話の記録は行わず、タイムラインや写真・グラフの閲覧専用として参加します（祖父母や見守り向け）。' : '授乳・睡眠・おむつなどの記録やお子さんの設定を家族で一緒に行えます。') +
-        '</p>' +
-        '<div class="notice"><i class="fas fa-desktop"></i> すでに参加している人が、スマホやPCなど<b>別の端末を追加する</b>ときは、前と<b>同じ呼び名</b>を入れてください。同じ人として使えます。</div>' +
+        '<div class="notice"><i class="fas fa-clock"></i> 招待コードは<b>24時間有効・1回限り</b>使えます。<br><i class="fas fa-desktop"></i> すでに参加している人がスマホやPCなど<b>別の端末を追加する</b>ときは、前と<b>同じ呼び名</b>を入れてください。同じ人として使えます（端末ごとに追加用の新しい招待コードが必要です）。</div>' +
         '<div class="error-text" id="ob-err"></div>' +
         '<button class="btn primary block" data-act="ob-join"><i class="fas fa-right-to-bracket"></i>この家族に参加する</button></div>' +
         foot + '</div>';
@@ -117,10 +104,10 @@
     if (mode === 'create') {
       return '<div class="onboard">' + back + head +
         '<p class="lead">新しい家族を作ります</p>' +
-        '<div class="notice warn"><i class="fas fa-triangle-exclamation"></i> パートナーや家族がすでに使い始めている場合は、ここでは作らず、<button class="link-btn" data-act="ob-go" data-mode="join" style="display:inline;min-height:0;padding:0">「家族コードをもらっている」</button>から参加してください。</div>' +
+        '<div class="notice warn"><i class="fas fa-triangle-exclamation"></i> パートナーや家族がすでに使い始めている場合は、ここでは作らず、<button class="link-btn" data-act="ob-go" data-mode="join" style="display:inline;min-height:0;padding:0">「招待コードをもらっている」</button>から参加してください。</div>' +
         '<div class="card">' +
         '<label class="field"><span>あなたの呼び名(記録した人として表示されます)</span><input type="text" id="ob-name" maxlength="30" placeholder="例: ママ、パパ、おばあちゃん" autocomplete="nickname"></label>' +
-        '<p class="muted" style="margin:0 0 10px">作成すると8文字の家族コードが発行されます。パートナーにはそのコードを伝えてください。</p>' +
+        '<p class="muted" style="margin:0 0 10px">作成後、「家族」タブから有効期限つきの招待コードを発行してパートナーや家族を招待できます。</p>' +
         '<div class="error-text" id="ob-err"></div>' +
         '<button class="btn primary block" data-act="ob-create"><i class="fas fa-plus"></i>家族を作成する</button></div>' +
         foot + '</div>';
@@ -129,14 +116,14 @@
       '<p class="lead">新生児からの育児記録を、<br>パパ・ママ・家族みんなで共有。</p>' +
       '<ul class="feature-list card">' +
       '<li><i class="fas fa-hand-pointer"></i><span>授乳・睡眠・おむつをワンタップで記録</span></li>' +
-      '<li><i class="fas fa-people-roof"></i><span>家族コードで同じ記録をリアルタイムに共有</span></li>' +
+      '<li><i class="fas fa-people-roof"></i><span>専用の招待コードで安全に家族共有</span></li>' +
       '<li><i class="fas fa-chart-line"></i><span>1日・1週間のまとめと成長グラフ</span></li>' +
       '<li><i class="fas fa-syringe"></i><span>予防接種の時期を自動で計算</span></li></ul>' +
       '<h2 class="ob-q">どちらですか?</h2>' +
       '<button class="ob-choice" data-act="ob-go" data-mode="join"><span class="ob-ic"><i class="fas fa-key"></i></span>' +
-      '<span class="ob-tx"><b>家族コードをもらっている</b><small>パートナーや家族が先に始めている / 別の端末を追加する</small></span><i class="fas fa-chevron-right ob-ar"></i></button>' +
+      '<span class="ob-tx"><b>招待コードをもらっている</b><small>パートナーや家族から招待された / 別の端末を追加する</small></span><i class="fas fa-chevron-right ob-ar"></i></button>' +
       '<button class="ob-choice" data-act="ob-go" data-mode="create"><span class="ob-ic"><i class="fas fa-plus"></i></span>' +
-      '<span class="ob-tx"><b>はじめて使う</b><small>家族の中で最初の1人。家族コードをこれから作る</small></span><i class="fas fa-chevron-right ob-ar"></i></button>' +
+      '<span class="ob-tx"><b>はじめて使う</b><small>家族の中で最初の1人。新しく家族を作る</small></span><i class="fas fa-chevron-right ob-ar"></i></button>' +
       foot + '</div>';
   };
 
@@ -488,20 +475,45 @@
       '<li><i class="fas fa-baby" style="color:var(--primary)"></i><span style="flex:1">' + esc(c.name) + ' <span class="muted">' + esc(BA.ageText(c.birthday)) + '</span></span>' +
       (isViewer ? '' : '<button class="link-btn" data-act="editchild" data-id="' + c.id + '">編集</button>') + '</li>').join('');
     const me = st.members.find((m) => m.id === st.me);
+
+    const activeInvites = (BA.data.invitations || []).filter((inv) => inv.expires_at > Date.now());
+    let inviteSection = '';
+    if (isViewer) {
+      inviteSection = '<p class="muted" style="margin:0;font-size:13px"><i class="fas fa-lock"></i> 招待コードの発行は記録権限を持つメンバーのみ行えます。新しい端末を追加したい場合は、記録権限を持つご家族に招待コードを発行してもらってください。</p>';
+    } else {
+      let activeList = '';
+      if (activeInvites.length > 0) {
+        activeList = '<div style="display:grid;gap:12px;margin-bottom:14px">' + activeInvites.map((inv) => {
+          const remainMs = inv.expires_at - Date.now();
+          const remainHours = Math.max(1, Math.round(remainMs / 3600000));
+          const isV = inv.role === 'viewer';
+          const roleBadge = isV
+            ? '<span class="badge" style="background:var(--sub);color:#fff"><i class="fas fa-eye"></i> 閲覧専用</span>'
+            : '<span class="badge" style="background:var(--primary);color:#fff"><i class="fas fa-pen"></i> 記録・閲覧</span>';
+          return '<div style="background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:12px">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
+            roleBadge +
+            '<span class="muted" style="font-size:12px"><i class="fas fa-clock"></i> あと約' + remainHours + '時間有効</span></div>' +
+            '<div class="code-box" style="margin:6px 0 10px;font-size:26px;padding:10px 4px" aria-label="招待コード">' + esc(inv.code) + '</div>' +
+            '<p class="muted" style="margin:0 0 10px;font-size:12px;text-align:center">1回限り有効（参加すると無効になります）<br>有効期限: ' + esc(BA.mdLabel(inv.expires_at)) + ' ' + esc(BA.clock(inv.expires_at)) + 'まで</p>' +
+            '<div class="btn-row" style="margin-bottom:6px">' +
+            '<button class="btn" data-act="copyinvitelink" data-code="' + esc(inv.code) + '"><i class="fas fa-copy"></i>リンクをコピー</button>' +
+            '<button class="btn primary" data-act="shareinvite" data-code="' + esc(inv.code) + '" data-role="' + esc(inv.role) + '"><i class="fas fa-share-nodes"></i>招待を送る</button></div>' +
+            '<div style="text-align:right"><button class="link-btn" data-act="delinvite" data-code="' + esc(inv.code) + '" style="color:var(--danger);font-size:12px"><i class="fas fa-trash"></i> この招待を取り消す</button></div>' +
+            '</div>';
+        }).join('') + '</div>';
+      }
+      inviteSection = activeList +
+        '<p class="muted" style="margin-bottom:10px;font-size:13px">招待コードは<b>24時間有効・1回限り</b>の使い捨てコードです。パートナーの招待や、別の端末(PCなど)を追加するたびに新しく発行します。</p>' +
+        '<div class="btn-row">' +
+        '<button class="btn primary" data-act="createinvite" data-role="editor"><i class="fas fa-key"></i> 招待コードを発行 (記録)</button>' +
+        '<button class="btn soft" data-act="createinvite" data-role="viewer"><i class="fas fa-eye"></i> 閲覧用で発行</button></div>';
+    }
+
     return header() + '<main id="view">' +
-      '<section class="card"><h2><i class="fas fa-people-roof" style="color:var(--primary)"></i>家族で共有する</h2>' +
-      '<p class="muted" style="margin-bottom:10px">パートナーや家族がこのコードで参加すると、同じ記録をそれぞれのスマホで見たり、記録したりできます。</p>' +
-      '<div class="code-box" aria-label="家族コード">' + esc(st.family.code) + '</div>' +
-      '<div class="btn-row" style="margin-top:10px">' +
-      '<button class="btn" data-act="copycode"><i class="fas fa-copy"></i>コードをコピー</button>' +
-      '<button class="btn primary" data-act="sharecode"><i class="fas fa-share-nodes"></i>招待を送る</button></div>' +
-      '<div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)">' +
-      '<p class="muted" style="margin-bottom:8px;font-size:13px"><i class="fas fa-eye"></i> おじいちゃん・おばあちゃんなど、閲覧専用で招待するとき：</p>' +
-      '<div class="btn-row">' +
-      '<button class="btn" data-act="copyreadonlylink"><i class="fas fa-link"></i>閲覧用リンクをコピー</button>' +
-      '<button class="btn soft" data-act="sharereadonly"><i class="fas fa-share-nodes"></i>閲覧用で招待</button></div></div>' +
-      (isViewer ? '' : '<button class="link-btn" data-act="regencode" style="margin-top:12px"><i class="fas fa-arrows-rotate"></i> 家族コードを再発行する</button>') +
-      '<p class="disclaimer" style="margin-top:10px">コードを知っている人は誰でも参加できます。信頼できる家族にだけ共有してください。コードが漏れたかも…というときは再発行すると古いコードは使えなくなります(すでに参加済みの端末はそのまま使えます)。</p></section>' +
+      '<section class="card"><h2><i class="fas fa-people-roof" style="color:var(--primary)"></i>家族を招待する</h2>' +
+      inviteSection +
+      '</section>' +
       '<section class="card"><h2><i class="fas fa-users" style="color:var(--primary)"></i>メンバー(' + st.members.length + '人)</h2><ul class="member-list">' + members + '</ul>' +
       '<button class="link-btn" data-act="rename" style="margin-top:6px"><i class="fas fa-pen"></i> 自分の呼び名を変更' + (me ? '(' + esc(me.name) + ')' : '') + '</button></section>' +
       '<section class="card"><h2><i class="fas fa-baby" style="color:var(--primary)"></i>お子さん</h2><ul class="member-list">' + kids + '</ul>' +
@@ -511,7 +523,7 @@
       '<section class="card"><h2><i class="fas fa-mobile-screen" style="color:var(--primary)"></i>ホーム画面に追加</h2>' +
       '<p class="muted">ブラウザのメニューから「ホーム画面に追加」をすると、アプリのようにすぐ開けます。</p></section>' +
       '<section class="card"><button class="btn danger block" data-act="logout"><i class="fas fa-right-from-bracket"></i>この端末の連携を解除</button>' +
-      '<p class="disclaimer" style="margin-top:10px">解除してもデータは削除されません。家族コード(' + esc(st.family.code) + ')で再度参加できます。</p></section>' +
+      '<p class="disclaimer" style="margin-top:10px">解除してもデータは削除されません。再度参加する場合は、家族の端末から新しい招待コードを発行してもらってください。</p></section>' +
       '<p class="disclaimer" style="text-align:center">すくすくログの記録は医療的な診断・助言ではありません。体調が心配なときは、かかりつけ医や小児科、#8000(小児救急電話相談)にご相談ください。</p>' +
       '</main>' + V.tabbar();
   };

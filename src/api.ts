@@ -75,6 +75,15 @@ async function uniqueCode(db: D1Database): Promise<string> {
   return ''
 }
 
+async function uniqueInviteCode(db: D1Database): Promise<string> {
+  for (let i = 0; i < 10; i++) {
+    const code = randomCode()
+    const exists = await db.prepare('SELECT 1 FROM invitations WHERE code = ?').bind(code).first()
+    if (!exists) return code
+  }
+  return ''
+}
+
 api.post('/families', async (c) => {
   const body = await readJson(c)
   const memberName = str(body.memberName, 30)
@@ -96,17 +105,66 @@ api.post('/families', async (c) => {
   return c.json({ token, code, memberId, role: 'editor' })
 })
 
+// 招待コードの事前検証(認証不要)
+api.get('/invitations/check', async (c) => {
+  const code = str(c.req.query('code'), 20)?.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (!code) return c.json({ valid: false, error: 'コードが指定されていません' }, 400)
+  const db = c.env.DB
+  const t = now()
+  const invite = await db
+    .prepare('SELECT code, role, expires_at, used_at FROM invitations WHERE code = ?')
+    .bind(code)
+    .first<{ code: string; role: 'editor' | 'viewer'; expires_at: number; used_at: number | null }>()
+
+  if (!invite) {
+    return c.json({ valid: false, reason: 'not_found', error: '招待コードが見つかりません' }, 404)
+  }
+  if (invite.used_at != null) {
+    return c.json({ valid: false, reason: 'used', error: 'この招待コードは既に使用されています' }, 400)
+  }
+  if (invite.expires_at <= t) {
+    return c.json({ valid: false, reason: 'expired', error: 'この招待コードは有効期限が切れています' }, 400)
+  }
+  return c.json({ valid: true, role: invite.role, expiresAt: invite.expires_at })
+})
+
 api.post('/join', async (c) => {
   const body = await readJson(c)
   const memberName = str(body.memberName, 30)
   const code = str(body.code, 20)?.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  const role = body.role === 'viewer' ? 'viewer' : 'editor'
   if (!memberName) return c.json({ error: 'あなたの呼び名を入力してください' }, 400)
-  if (!code) return c.json({ error: '家族コードを入力してください' }, 400)
+  if (!code) return c.json({ error: '招待コードを入力してください' }, 400)
 
   const db = c.env.DB
-  const family = await db.prepare('SELECT id FROM families WHERE code = ?').bind(code).first<{ id: string }>()
-  if (!family) return c.json({ error: '家族コードが見つかりません。入力を確認してください' }, 404)
+  const t = now()
+
+  // 1. 招待コードの照合
+  const invite = await db
+    .prepare('SELECT code, family_id, role, created_at, expires_at, used_at FROM invitations WHERE code = ?')
+    .bind(code)
+    .first<{ code: string; family_id: string; role: 'editor' | 'viewer'; created_at: number; expires_at: number; used_at: number | null }>()
+
+  if (!invite) {
+    // 既存の古い共通家族コードで参加しようとした場合への親切な案内
+    const oldFamily = await db.prepare('SELECT id FROM families WHERE code = ?').bind(code).first<{ id: string }>()
+    if (oldFamily) {
+      return c.json({
+        error: '共通の家族コードでの参加は終了しました。すでに参加しているご家族の端末(「家族」タブ)から、新しいワンタイム招待コードを発行してもらってください'
+      }, 400)
+    }
+    return c.json({ error: '招待コードが見つかりません。コードを確認してください' }, 404)
+  }
+
+  if (invite.used_at != null) {
+    return c.json({ error: 'この招待コードは既に使用されています。新しいコードを発行してもらってください' }, 400)
+  }
+
+  if (invite.expires_at <= t) {
+    return c.json({ error: 'この招待コードは有効期限が切れています。新しいコードを発行してもらってください' }, 400)
+  }
+
+  const familyId = invite.family_id
+  const assignedRole = invite.role || 'editor'
 
   const token = randomToken()
   const tokenHash = await sha256(token)
@@ -114,29 +172,41 @@ api.post('/join', async (c) => {
   // 同じ呼び名のメンバーがいれば、その人の別の端末(PCなど)として追加する
   const existing = await db
     .prepare('SELECT id, name, role FROM members WHERE family_id = ? AND lower(name) = lower(?) ORDER BY created_at LIMIT 1')
-    .bind(family.id, memberName)
+    .bind(familyId, memberName)
     .first<{ id: string; name: string; role: string }>()
+
   if (existing) {
-    await db
-      .prepare('INSERT INTO member_tokens (token_hash, member_id, created_at) VALUES (?, ?, ?)')
-      .bind(tokenHash, existing.id, now())
-      .run()
-    return c.json({ token, code, memberId: existing.id, role: existing.role || 'editor', linked: true, memberName: existing.name })
+    await db.batch([
+      db.prepare('INSERT INTO member_tokens (token_hash, member_id, created_at) VALUES (?, ?, ?)')
+        .bind(tokenHash, existing.id, t),
+      db.prepare('UPDATE invitations SET used_at = ?, used_by_member_id = ? WHERE code = ?')
+        .bind(t, existing.id, code)
+    ])
+    return c.json({
+      token,
+      memberId: existing.id,
+      role: existing.role || 'editor',
+      linked: true,
+      memberName: existing.name
+    })
   }
 
   const memberId = uuid()
-  await db
-    .prepare('INSERT INTO members (id, family_id, name, token_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(memberId, family.id, memberName, tokenHash, role, now())
-    .run()
-  return c.json({ token, code, memberId, role, linked: false })
+  await db.batch([
+    db.prepare('INSERT INTO members (id, family_id, name, token_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(memberId, familyId, memberName, tokenHash, assignedRole, t),
+    db.prepare('UPDATE invitations SET used_at = ?, used_by_member_id = ? WHERE code = ?')
+      .bind(t, memberId, code)
+  ])
+
+  return c.json({ token, memberId, role: assignedRole, linked: false })
 })
 
 // ---------- 認証 ----------
 
 api.use('*', async (c: Context<Env>, next: Next) => {
   const path = c.req.path
-  if (path.endsWith('/families') || path.endsWith('/join')) return next()
+  if (path.endsWith('/families') || path.endsWith('/join') || path.endsWith('/invitations/check')) return next()
   const auth = c.req.header('Authorization') || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''
   if (!token) return c.json({ error: 'unauthorized' }, 401)
@@ -237,6 +307,7 @@ api.post('/families/discard', async (c) => {
   await db.batch([
     db.prepare('DELETE FROM member_tokens WHERE member_id IN (SELECT id FROM members WHERE family_id = ?)').bind(fid),
     db.prepare('DELETE FROM ai_usage WHERE family_id = ?').bind(fid),
+    db.prepare('DELETE FROM invitations WHERE family_id = ?').bind(fid),
     db.prepare('DELETE FROM members WHERE family_id = ?').bind(fid),
     db.prepare('DELETE FROM families WHERE id = ?').bind(fid)
   ])
@@ -255,6 +326,60 @@ api.delete('/members/:id', async (c) => {
     .run()
   if (!r.meta.changes) return c.json({ error: 'not found' }, 404)
   await c.env.DB.prepare('DELETE FROM member_tokens WHERE member_id = ?').bind(id).run()
+  return c.json({ ok: true })
+})
+
+// ---------- 招待コード (ワンタイム・有効期限付き) ----------
+
+// 家族の有効な招待一覧を取得
+api.get('/invitations', async (c) => {
+  const familyId = c.get('familyId')
+  const t = now()
+  const rows = await c.env.DB
+    .prepare('SELECT code, role, created_at, expires_at FROM invitations WHERE family_id = ? AND used_at IS NULL AND expires_at > ? ORDER BY created_at DESC')
+    .bind(familyId, t)
+    .all<{ code: string; role: 'editor' | 'viewer'; created_at: number; expires_at: number }>()
+  return c.json({ invitations: rows.results || [] })
+})
+
+// 招待コードの発行 (editorのみ、24時間・1回限り有効)
+api.post('/invitations', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
+
+  const body = await readJson(c)
+  const role = body.role === 'viewer' ? 'viewer' : 'editor'
+  const db = c.env.DB
+  const code = await uniqueInviteCode(db)
+  if (!code) return c.json({ error: '招待コードの生成に失敗しました。もう一度お試しください' }, 500)
+
+  const t = now()
+  const expiresAt = t + 24 * 60 * 60 * 1000 // 24時間有効
+  const familyId = c.get('familyId')
+  const memberId = c.get('memberId')
+
+  await db
+    .prepare('INSERT INTO invitations (code, family_id, created_by_member_id, role, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(code, familyId, memberId, role, t, expiresAt)
+    .run()
+
+  return c.json({ code, role, createdAt: t, expiresAt })
+})
+
+// 招待コードの取り消し (editorのみ)
+api.delete('/invitations/:code', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
+
+  const code = str(c.req.param('code'), 20)?.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (!code) return c.json({ error: 'コードが不正です' }, 400)
+
+  const familyId = c.get('familyId')
+  await c.env.DB
+    .prepare('DELETE FROM invitations WHERE code = ? AND family_id = ? AND used_at IS NULL')
+    .bind(code, familyId)
+    .run()
+
   return c.json({ ok: true })
 })
 

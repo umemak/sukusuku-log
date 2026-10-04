@@ -39,6 +39,7 @@
       jobs.push(BA.api('GET', '/children/' + c.id + '/foods'));
     }
     if (st.tab === 'memory') jobs.push(BA.api('GET', '/children/' + c.id + '/diary'));
+    if (st.tab === 'family') jobs.push(BA.api('GET', '/invitations').catch(() => ({ invitations: [] })));
     // 補助の「申請済み」チェック(ホームの児童手当のお知らせと、健康タブで使う)
     const subsP = (st.tab === 'health' || st.tab === 'home') ? BA.api('GET', '/children/' + c.id + '/subsidies').catch(() => null) : null;
     const res = await Promise.all(jobs);
@@ -53,6 +54,7 @@
       BA.data.foods = res[4].foods;
     }
     if (st.tab === 'memory') BA.data.diary = res[2].diary;
+    if (st.tab === 'family') BA.data.invitations = res[2]?.invitations || [];
   }
 
   // ---------- 描画 ----------
@@ -61,9 +63,8 @@
     if (st.token && st.family) st.obMode = null;
     if (!st.token || !st.family) {
       const sp = new URLSearchParams(location.search);
-      const code = sp.get('code') || '';
-      const readonly = sp.get('readonly') === '1' || sp.get('role') === 'viewer';
-      root.innerHTML = V.onboard(code, readonly);
+      const code = sp.get('code') || sp.get('invite') || '';
+      root.innerHTML = V.onboard(code);
       return;
     }
     if (!BA.child()) { root.innerHTML = V.noChild(); return; }
@@ -120,13 +121,13 @@
     const code = codeEl ? codeEl.value.trim() : '';
     const err = document.getElementById('ob-err');
     err.textContent = '';
-    if (kind === 'join' && !code) { err.textContent = '家族コードを入力してください'; codeEl.focus(); return; }
+    if (kind === 'join' && !code) { err.textContent = '招待コードを入力してください'; codeEl.focus(); return; }
     if (!name) { err.textContent = 'あなたの呼び名を入力してください'; document.getElementById('ob-name').focus(); return; }
     btn.disabled = true;
     try {
       const r = kind === 'create'
         ? await BA.api('POST', '/families', { memberName: name })
-        : await BA.api('POST', '/join', { memberName: name, code, role: st.obRole || 'editor' });
+        : await BA.api('POST', '/join', { memberName: name, code });
       st.token = r.token;
       BA.ls.set('ba_token', r.token);
       if (location.search) history.replaceState(null, '', location.pathname);
@@ -134,7 +135,7 @@
       st.tab = kind === 'create' && !st.children.length ? 'home' : 'home';
       if (kind === 'create') {
         BA.render();
-        BA.toast('家族コードは「家族」タブで確認できます', { ms: 4000 });
+        BA.toast('家族を作成しました。ご家族の招待は「家族」タブから行えます', { ms: 4000 });
         BA.openChildForm(null);
         return;
       }
@@ -176,11 +177,6 @@
       BA.toast('最初の画面に戻りました');
     },
     'ob-join': (el) => onboardSubmit('join', el),
-    'ob-role': (el) => {
-      st.obRole = el.dataset.role;
-      st.obRoleTouched = true;
-      BA.render();
-    },
     addchild: () => {
       if (BA.isViewer()) return;
       BA.openChildForm(null);
@@ -259,41 +255,56 @@
       if (row) BA.openVaccine(row);
     },
     theme: (el) => { BA.ls.set('ba_theme', el.dataset.t); BA.applyTheme(); BA.render(); },
-    copycode: async () => {
-      try { await navigator.clipboard.writeText(st.family.code); BA.toast('家族コードをコピーしました'); }
-      catch (e) { BA.toast('コピーできませんでした。コードを手入力してください'); }
-    },
-    sharecode: async () => {
-      const url = location.origin + '/?code=' + st.family.code;
-      const text = '「すくすくログ」で育児記録を一緒に共有しましょう。リンクを開いて参加してください。\n家族コード: ' + st.family.code;
-      if (navigator.share) {
-        try { await navigator.share({ title: 'すくすくログ', text, url }); } catch (e) { /* cancelled */ }
-      } else {
-        try { await navigator.clipboard.writeText(text + '\n' + url); BA.toast('招待文をコピーしました'); }
-        catch (e) { BA.toast('共有できませんでした'); }
+    createinvite: async (el) => {
+      if (BA.isViewer()) return;
+      const role = el.dataset.role || 'editor';
+      try {
+        await BA.api('POST', '/invitations', { role });
+        BA.toast(role === 'viewer' ? '閲覧用の招待コードを発行しました' : '招待コードを発行しました');
+        await BA.refresh();
+      } catch (e) {
+        BA.errToast(e);
       }
     },
-    copyreadonlylink: async () => {
-      const url = location.origin + '/?code=' + st.family.code + '&readonly=1';
+    copyinvitelink: async (el) => {
+      const code = el.dataset.code;
+      const url = location.origin + '/?code=' + code;
       try {
         await navigator.clipboard.writeText(url);
-        BA.toast('閲覧専用の参加リンクをコピーしました');
+        BA.toast('招待リンクをコピーしました (24時間・1回限り有効)');
       } catch (e) {
-        BA.toast('コピーできませんでした');
+        BA.toast('コピーできませんでした。コード: ' + code);
       }
     },
-    sharereadonly: async () => {
-      const url = location.origin + '/?code=' + st.family.code + '&readonly=1';
-      const text = '「すくすくログ」で育児記録・写真を見守り・閲覧できます。こちらのリンクから参加してください。\n家族コード: ' + st.family.code;
+    shareinvite: async (el) => {
+      const code = el.dataset.code;
+      const role = el.dataset.role;
+      const url = location.origin + '/?code=' + code;
+      const isV = role === 'viewer';
+      const text = isV
+        ? '「すくすくログ」で育児記録・写真を見守り・閲覧できます。こちらの招待リンクから参加してください(24時間・1回のみ有効)。\n招待コード: ' + code
+        : '「すくすくログ」で育児記録を一緒に共有しましょう。こちらの招待リンクから参加してください(24時間・1回のみ有効)。\n招待コード: ' + code;
       if (navigator.share) {
-        try { await navigator.share({ title: 'すくすくログ(閲覧用招待)', text, url }); } catch (e) { /* cancelled */ }
+        try { await navigator.share({ title: 'すくすくログの招待', text, url }); } catch (e) { /* cancelled */ }
       } else {
         try {
           await navigator.clipboard.writeText(text + '\n' + url);
-          BA.toast('閲覧用招待文をコピーしました');
+          BA.toast('招待文をコピーしました');
         } catch (e) {
           BA.toast('共有できませんでした');
         }
+      }
+    },
+    delinvite: async (el) => {
+      if (BA.isViewer()) return;
+      const code = el.dataset.code;
+      if (!confirm('この招待コード(' + code + ')を取り消しますか?\nこのコードでは参加できなくなります。')) return;
+      try {
+        await BA.api('DELETE', '/invitations/' + code);
+        BA.toast('招待コードを取り消しました');
+        await BA.refresh();
+      } catch (e) {
+        BA.errToast(e);
       }
     },
     changerole: async (el) => {
@@ -337,18 +348,13 @@
     'report-close': () => BA.closeReport(),
     'report-print': () => BA.printReport(),
     'report-days': (el) => BA.reportDays(Number(el.dataset.d)),
-    regencode: async () => {
-      if (BA.isViewer()) return;
-      if (!confirm('家族コードを再発行します。古いコードでは参加できなくなります(参加済みの端末はそのまま使えます)。よろしいですか?')) return;
-      try { const r = await BA.api('POST', '/families/regenerate-code'); st.family.code = r.code; BA.render(); BA.toast('新しいコードを発行しました'); } catch (e) { BA.errToast(e); }
-    },
     delmember: async (el) => {
       if (BA.isViewer()) return;
       if (!confirm('「' + el.dataset.name + '」を家族から削除しますか?\nその端末は記録を見られなくなります(過去の記録は残ります)。')) return;
       try { await BA.api('DELETE', '/members/' + el.dataset.id); await BA.reloadMe(); BA.render(); BA.toast('削除しました'); } catch (e) { BA.errToast(e); }
     },
     logout: () => {
-      if (!confirm('この端末の連携を解除します。家族コードで再度参加できます。よろしいですか?')) return;
+      if (!confirm('この端末の連携を解除します。再度参加する場合は、家族の端末から新しい招待コードを発行してもらってください。よろしいですか?')) return;
       st.token = null; st.family = null; st.members = []; st.children = []; st.childId = null;
       BA.ls.del('ba_token'); BA.ls.del('ba_child');
       BA.render();
