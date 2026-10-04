@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 import type { Context, Next } from 'hono'
 import { parseCare, GeminiError, type GeminiEnv } from './gemini'
+import { sendVerificationEmail, type EmailBindings } from './email'
 
-export type Bindings = { DB: D1Database; PHOTOS: R2Bucket } & GeminiEnv
+export type Bindings = { DB: D1Database; PHOTOS: R2Bucket } & EmailBindings & GeminiEnv
 type Vars = { familyId: string; memberId: string; role: 'editor' | 'viewer' }
 type Env = { Bindings: Bindings; Variables: Vars }
 
@@ -30,6 +31,15 @@ function randomToken(): string {
 function randomCode(len = 8): string {
   const bytes = crypto.getRandomValues(new Uint8Array(len))
   return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('')
+}
+
+function randomVerificationCode(): string {
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1000000
+  return String(n).padStart(6, '0')
+}
+
+const isValidEmail = (v: string): boolean => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) && v.length <= 100
 }
 
 const str = (v: unknown, max: number): string | null => {
@@ -64,7 +74,7 @@ function requireEditor(c: Context<Env>) {
 
 const api = new Hono<Env>()
 
-// ---------- 認証不要: 家族の作成・参加 ----------
+// ---------- 認証不要: 家族の作成・参加・メール認証 ----------
 
 async function uniqueCode(db: D1Database): Promise<string> {
   for (let i = 0; i < 5; i++) {
@@ -84,25 +94,96 @@ async function uniqueInviteCode(db: D1Database): Promise<string> {
   return ''
 }
 
+// 家族新規作成のためのメール認証コード送信
+api.post('/auth/send-code', async (c) => {
+  const body = await readJson(c)
+  const email = str(body.email, 100)?.toLowerCase()
+  if (!email || !isValidEmail(email)) {
+    return c.json({ error: '有効なメールアドレスを入力してください' }, 400)
+  }
+
+  const db = c.env.DB
+  const t = now()
+
+  // レートリミット: 同じメールアドレスへの送信は60秒に1回まで
+  const recent = await db
+    .prepare('SELECT created_at FROM email_verifications WHERE email = ? AND created_at > ? ORDER BY created_at DESC LIMIT 1')
+    .bind(email, t - 60000)
+    .first<{ created_at: number }>()
+  if (recent) {
+    return c.json({ error: '認証コードを送信したばかりです。少し待ってから再送してください' }, 429)
+  }
+
+  const code = randomVerificationCode()
+  const codeHash = await sha256(code)
+  const id = uuid()
+  const expiresAt = t + 10 * 60 * 1000 // 10分間有効
+
+  await db
+    .prepare('INSERT INTO email_verifications (id, email, code_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(id, email, codeHash, t, expiresAt)
+    .run()
+
+  try {
+    await sendVerificationEmail(c.env, email, code)
+  } catch (e: any) {
+    return c.json({ error: e.message || '認証メールの送信に失敗しました' }, 500)
+  }
+
+  return c.json({ ok: true, expiresAt })
+})
+
+// 家族新規作成 (メール認証コード必須)
 api.post('/families', async (c) => {
   const body = await readJson(c)
   const memberName = str(body.memberName, 30)
+  const email = str(body.email, 100)?.toLowerCase()
+  const code = str(body.code, 10)?.trim()
+  if (!email || !isValidEmail(email)) return c.json({ error: '有効なメールアドレスを入力してください' }, 400)
+  if (!code || code.length !== 6) return c.json({ error: '6桁の認証コードを入力してください' }, 400)
   if (!memberName) return c.json({ error: 'あなたの呼び名を入力してください' }, 400)
 
   const db = c.env.DB
+  const t = now()
+
+  // 最新の未認証コードを取得
+  const verification = await db
+    .prepare('SELECT id, code_hash, expires_at, attempts FROM email_verifications WHERE email = ? AND verified_at IS NULL ORDER BY created_at DESC LIMIT 1')
+    .bind(email)
+    .first<{ id: string; code_hash: string; expires_at: number; attempts: number }>()
+
+  if (!verification || verification.expires_at <= t) {
+    return c.json({ error: '認証コードが見つからないか、有効期限が切れています。もう一度コードを送信してください' }, 400)
+  }
+
+  if (verification.attempts >= 5) {
+    return c.json({ error: '入力試行回数が上限を超えました。もう一度認証コードを送信してください' }, 400)
+  }
+
+  const codeHash = await sha256(code)
+  if (codeHash !== verification.code_hash) {
+    await db.prepare('UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ?').bind(verification.id).run()
+    const remaining = 4 - verification.attempts
+    return c.json({
+      error: remaining > 0 ? `認証コードが正しくありません (残り試行回数: ${remaining}回)` : '認証コードが正しくありません。再度送信してください'
+    }, 400)
+  }
+
   const familyId = uuid()
-  const code = await uniqueCode(db)
-  if (!code) return c.json({ error: '家族コードの生成に失敗しました。もう一度お試しください' }, 500)
+  const familyCode = await uniqueCode(db)
+  if (!familyCode) return c.json({ error: '家族の作成に失敗しました。もう一度お試しください' }, 500)
 
   const token = randomToken()
   const memberId = uuid()
-  const t = now()
+
   await db.batch([
-    db.prepare('INSERT INTO families (id, code, created_at) VALUES (?, ?, ?)').bind(familyId, code, t),
+    db.prepare('UPDATE email_verifications SET verified_at = ? WHERE id = ?').bind(t, verification.id),
+    db.prepare('INSERT INTO families (id, code, creator_email, created_at) VALUES (?, ?, ?, ?)').bind(familyId, familyCode, email, t),
     db.prepare('INSERT INTO members (id, family_id, name, token_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(memberId, familyId, memberName, await sha256(token), 'editor', t)
   ])
-  return c.json({ token, code, memberId, role: 'editor' })
+
+  return c.json({ token, memberId, role: 'editor' })
 })
 
 // 招待コードの事前検証(認証不要)
@@ -206,7 +287,12 @@ api.post('/join', async (c) => {
 
 api.use('*', async (c: Context<Env>, next: Next) => {
   const path = c.req.path
-  if (path.endsWith('/families') || path.endsWith('/join') || path.endsWith('/invitations/check')) return next()
+  if (
+    path.endsWith('/families') ||
+    path.endsWith('/join') ||
+    path.endsWith('/invitations/check') ||
+    path.endsWith('/auth/send-code')
+  ) return next()
   const auth = c.req.header('Authorization') || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''
   if (!token) return c.json({ error: 'unauthorized' }, 401)

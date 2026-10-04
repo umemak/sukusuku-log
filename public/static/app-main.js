@@ -116,50 +116,136 @@
 
   // ---------- オンボーディング ----------
   async function onboardSubmit(kind, btn) {
-    const name = document.getElementById('ob-name').value.trim();
-    const codeEl = document.getElementById('ob-code');
-    const code = codeEl ? codeEl.value.trim() : '';
     const err = document.getElementById('ob-err');
     err.textContent = '';
-    if (kind === 'join' && !code) { err.textContent = '招待コードを入力してください'; codeEl.focus(); return; }
-    if (!name) { err.textContent = 'あなたの呼び名を入力してください'; document.getElementById('ob-name').focus(); return; }
-    btn.disabled = true;
-    try {
-      const r = kind === 'create'
-        ? await BA.api('POST', '/families', { memberName: name })
-        : await BA.api('POST', '/join', { memberName: name, code });
-      st.token = r.token;
-      BA.ls.set('ba_token', r.token);
-      if (location.search) history.replaceState(null, '', location.pathname);
-      await BA.reloadMe();
-      st.tab = kind === 'create' && !st.children.length ? 'home' : 'home';
-      if (kind === 'create') {
+    const nameEl = document.getElementById('ob-name');
+    const name = nameEl ? nameEl.value.trim() : '';
+
+    if (kind === 'join') {
+      const codeEl = document.getElementById('ob-code');
+      const code = codeEl ? codeEl.value.trim() : '';
+      if (!code) { err.textContent = '招待コードを入力してください'; if (codeEl) codeEl.focus(); return; }
+      if (!name) { err.textContent = 'あなたの呼び名を入力してください'; if (nameEl) nameEl.focus(); return; }
+      btn.disabled = true;
+      try {
+        const r = await BA.api('POST', '/join', { memberName: name, code });
+        st.token = r.token;
+        BA.ls.set('ba_token', r.token);
+        if (location.search) history.replaceState(null, '', location.pathname);
+        await BA.reloadMe();
+        st.tab = 'home';
+        await BA.refresh();
+        const roleMsg = r.role === 'viewer' ? ' (閲覧のみ)' : '';
+        BA.toast(r.linked ? '「' + r.memberName + '」さんの端末として追加しました' : '家族に参加しました' + roleMsg, { ms: r.linked ? 4000 : undefined });
+      } catch (e) {
+        err.textContent = e.message;
+      } finally { btn.disabled = false; }
+      return;
+    }
+
+    if (kind === 'create') {
+      const vcodeEl = document.getElementById('ob-vcode');
+      const vcode = vcodeEl ? vcodeEl.value.trim() : '';
+      const email = st.obEmail;
+      if (!vcode || vcode.length !== 6) {
+        err.textContent = '6桁の認証コードを入力してください';
+        if (vcodeEl) vcodeEl.focus();
+        return;
+      }
+      if (!name) {
+        err.textContent = 'あなたの呼び名を入力してください';
+        if (nameEl) nameEl.focus();
+        return;
+      }
+      btn.disabled = true;
+      try {
+        const r = await BA.api('POST', '/families', { memberName: name, email, code: vcode });
+        st.token = r.token;
+        BA.ls.set('ba_token', r.token);
+        st.obStep = null;
+        st.obEmail = null;
+        if (location.search) history.replaceState(null, '', location.pathname);
+        await BA.reloadMe();
+        st.tab = 'home';
         BA.render();
         BA.toast('家族を作成しました。ご家族の招待は「家族」タブから行えます', { ms: 4000 });
         BA.openChildForm(null);
-        return;
-      }
-      await BA.refresh();
-      const roleMsg = r.role === 'viewer' ? ' (閲覧のみ)' : '';
-      BA.toast(r.linked ? '「' + r.memberName + '」さんの端末として追加しました' : '家族に参加しました' + roleMsg, { ms: r.linked ? 4000 : undefined });
-    } catch (e) {
-      err.textContent = e.message;
-    } finally { btn.disabled = false; }
+      } catch (e) {
+        err.textContent = e.message;
+      } finally { btn.disabled = false; }
+    }
   }
 
   // ---------- クリック処理 ----------
   const actions = {
     'ob-go': (el) => {
       st.obMode = el.dataset.mode === 'choose' ? null : el.dataset.mode;
-      if (el.dataset.mode === 'choose' && location.search) history.replaceState(null, '', location.pathname);
+      if (el.dataset.mode === 'choose') {
+        st.obStep = 'email';
+        st.obEmail = '';
+        if (location.search) history.replaceState(null, '', location.pathname);
+      }
       BA.render();
       window.scrollTo(0, 0);
       if (!st.obMode) return;
-      const codeEl = document.getElementById('ob-code');
-      const first = codeEl && !codeEl.value ? codeEl : document.getElementById('ob-name');
-      if (first) first.focus();
+      if (st.obMode === 'create') {
+        const emailEl = document.getElementById('ob-email');
+        if (emailEl) emailEl.focus();
+      } else {
+        const codeEl = document.getElementById('ob-code');
+        const first = codeEl && !codeEl.value ? codeEl : document.getElementById('ob-name');
+        if (first) first.focus();
+      }
+    },
+    'ob-sendcode': async (el) => {
+      const emailEl = document.getElementById('ob-email');
+      const email = emailEl ? emailEl.value.trim().toLowerCase() : '';
+      const err = document.getElementById('ob-err');
+      err.textContent = '';
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        err.textContent = '有効なメールアドレスを入力してください';
+        if (emailEl) emailEl.focus();
+        return;
+      }
+      el.disabled = true;
+      try {
+        await BA.api('POST', '/auth/send-code', { email });
+        st.obEmail = email;
+        st.obStep = 'code';
+        BA.render();
+        BA.toast(email + ' に認証コードを送信しました');
+        const vEl = document.getElementById('ob-vcode');
+        if (vEl) vEl.focus();
+      } catch (e) {
+        err.textContent = e.message;
+      } finally {
+        el.disabled = false;
+      }
+    },
+    'ob-resendemail': async (el) => {
+      const email = st.obEmail;
+      const err = document.getElementById('ob-err');
+      if (err) err.textContent = '';
+      if (!email) return;
+      el.disabled = true;
+      try {
+        await BA.api('POST', '/auth/send-code', { email });
+        BA.toast('認証コードを再送信しました');
+      } catch (e) {
+        if (err) err.textContent = e.message;
+        BA.errToast(e);
+      } finally {
+        el.disabled = false;
+      }
+    },
+    'ob-changeemail': () => {
+      st.obStep = 'email';
+      BA.render();
+      const el = document.getElementById('ob-email');
+      if (el) el.focus();
     },
     'ob-create': (el) => onboardSubmit('create', el),
+    'ob-join': (el) => onboardSubmit('join', el),
     backstart: async () => {
       const alone = st.members.length <= 1;
       if (!confirm(alone
@@ -176,7 +262,6 @@
       BA.render();
       BA.toast('最初の画面に戻りました');
     },
-    'ob-join': (el) => onboardSubmit('join', el),
     addchild: () => {
       if (BA.isViewer()) return;
       BA.openChildForm(null);
@@ -437,7 +522,7 @@
     let sv = '';
     try {
       const r = await fetch('/api/version?t=' + Date.now(), { cache: 'no-store', headers: { Accept: 'application/json' } });
-      if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) return; // Access のログイン画面などは無視
+      if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) return;
       sv = (await r.json()).v || '';
     } catch (e) { return; }
     if (!sv || sv === myVer) { try { sessionStorage.removeItem('ba_upd'); } catch (e) {} return; }

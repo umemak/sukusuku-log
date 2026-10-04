@@ -12,7 +12,8 @@
 
 ## 現在できること
 - **最初の画面**: 「招待コードをもらっている」か「はじめて使う」を先に選び、入力画面を分けている(名前欄・コード欄が混ざらない)。招待リンク(`/?code=`)から開くと参加画面にコードが入った状態で始まる。
-- **家族共有とワンタイム招待コード**: ログイン不要。「家族を新しく作る」と最初のメンバーとして開始。パートナーや家族を招待する際は、「家族」タブから**24時間有効・1回限りの使い捨て招待コード**を発行する（共通の固定コードは不使用）。
+- **新規家族作成時のメール認証**: 初めて家族を作成する際は、メールアドレスを入力して6桁の認証コードを受信・確認した上で家族を作成する（Cloudflare Accessは不要）。認証コードは10分間有効。
+- **家族共有とワンタイム招待コード**: ログイン不要。パートナーや家族を招待する際は、「家族」タブから**24時間有効・1回限りの使い捨て招待コード**を発行する（共通の固定コードは不使用）。
   - **発行時のロール選択**: 「記録・閲覧」用または「閲覧専用(記録しない)」(祖父母や見守り向け)を指定して招待コードを発行可能。
   - **別の端末の追加**: PCやタブレットなど別の端末を追加する際も、参加済みの端末から新しい招待コードを発行して入る。前と同じ呼び名で入ると同じメンバーとして端末が追加される。一度使われたコードやすでに期限切れのコードは使用できない。
   - **閲覧のみユーザーの画面**: 授乳・睡眠・おむつなどの記録ボタン、タイマー、音声入力、写真追加、編集・削除ボタンが非表示になり、見守りや閲覧に専念できるシンプルなUIになる。タイムラインのタップ時も編集フォームではなく閲覧詳細シートを表示。
@@ -32,16 +33,17 @@
 - 他端末の記録は20秒ごと、および画面を開き直したときに自動で反映される。
 
 ## Data Architecture
-- **Storage**: Cloudflare D1(SQLite)。`migrations/0001_initial_schema.sql`, `0002_diary_foods.sql`, `0006_member_role.sql`, `0007_invitations.sql`
+- **Storage**: Cloudflare D1(SQLite)。`migrations/0001_initial_schema.sql`, `0002_diary_foods.sql`, `0006_member_role.sql`, `0007_invitations.sql`, `0008_email_verifications.sql`
 - **Object storage**: Cloudflare R2(バケット `sukusuku-log-photos`、バインディング `PHOTOS`、キーは `<family_id>/<photo_id>`)
-- **Tables**: families / members(role: 'editor' | 'viewer') / children / logs / growth / vaccinations / foods / diary / ai_usage(AI利用回数) / member_tokens(追加端末の鍵) / invitations(ワンタイム招待コード: code, family_id, created_by_member_id, role, created_at, expires_at, used_at, used_by_member_id)
+- **Tables**: families / members(role: 'editor' | 'viewer') / children / logs / growth / vaccinations / foods / diary / ai_usage(AI利用回数) / member_tokens(追加端末の鍵) / invitations(ワンタイム招待コード) / email_verifications(メール認証コード)
 - **WHO データ**: `public/static/who-lms.js`(Weight-for-age / Length(Height)-for-age / Head circumference-for-age の LMS 表、0〜5歳)
 - **認証**: 端末ごとのランダムトークン(localStorage)。DBにはSHA-256ハッシュのみ保存。全APIが家族IDで絞り込み、書き込みAPIは `editor` 権限を要求。
 
 ## API(すべて `/api` 配下、`Authorization: Bearer <token>`)
 | メソッド | パス | 内容 |
 |---|---|---|
-| POST | /families | 家族作成(認証不要) |
+| POST | /auth/send-code | メール認証コードの送信(6桁数字・10分間有効、認証不要) |
+| POST | /families | 家族作成(email, code, memberName を検証、認証不要) |
 | GET | /invitations/check?code= | 招待コードの事前検証(有効/期限切れ/使用済み、role返却、認証不要) |
 | POST | /join | ワンタイム招待コードで参加(認証不要) |
 | GET/POST | /invitations | 家族の有効な招待コード一覧取得 / 招待コード発行 (POSTはeditorのみ・24時間/1回限り有効) |
@@ -90,12 +92,17 @@ npx wrangler pages secret put GEMINI_MODEL --project-name sukusuku-log
 ローカルでは `.dev.vars`(git管理外)に `GEMINI_API_KEY=...` を書く。`GEMINI_API_BASE` を指定すると別のエンドポイント(テスト用モック)に向けられる。
 シークレットを登録・変更した後は、再デプロイ(または Pages の新しいデプロイ)で反映される。
 
+## メール認証(Cloudflare Email Routing)の設定
+新規家族作成時のメール認証には Cloudflare Email Routing (`send_email` バインディング) を使用します。
+- `wrangler.jsonc` の `send_email` バインディング (`EMAIL`) を通じてメールを送信します。
+- 送信元アドレス (`EMAIL_FROM`) を変更する場合は、Cloudflare Pages の環境変数またはシークレットで設定します (例: `noreply@yourdomain.com`)。
+- ローカル開発時やバインディング未設定時は、送信された認証コードがサーバーコンソール (`wrangler pages dev` の出力) に表示され、そのまま動作確認が可能です。
+
 ## 未実装・今後の候補
 - AI: 離乳食メニュー提案、日記の下書き、受診まとめの要約(今回は音声入力のみ)
 - プッシュ通知(Cloudflare Pagesでは常駐処理ができないため未対応)
 - 日記写真の複数枚添付、日記の写真差し替え
 - 修正月齢(早産)に対応した成長曲線
-- アプリ側での Cloudflare Access JWT(AUD)検証
 
 ## 注意
 予防接種の時期・成長の目安・パーセンタイル(WHO Child Growth Standards 2006。日本の乳幼児身体発育曲線とは基準が異なる)・アレルギー関連の表示は一般的な目安であり、医療的な診断・助言ではありません。実際はかかりつけ医・自治体の案内に従ってください。
@@ -107,7 +114,7 @@ npx wrangler pages secret put GEMINI_MODEL --project-name sukusuku-log
 
 ## アイコン
 - 元データ: `public/static/icon.svg`(芽を生やした赤ちゃんの顔)。PNG は `rsvg-convert` で書き出し(`icon-v2-*.png`、maskable 用は余白付き)。
-- iOS のホーム画面用 `apple-touch-icon` は、Cloudflare Access の認証に邪魔されないよう HTML に data URI で埋め込み(`src/touch-icon.ts`)。
+- iOS のホーム画面用 `apple-touch-icon` は、追加時に確実に読み込ませるため HTML に data URI で埋め込み(`src/touch-icon.ts`)。
 
 ## 補助・手続きの案内(健康タブ →「補助」)
 - お子さんの月齢に合わせて「いま確認したいこと」を先頭に並べる、国・都道府県の子育て関連制度の案内(児童手当、妊婦のための支援給付、出産育児一時金、育児休業給付、国民年金の育児免除、こども誰でも通園制度、保育の無償化、医療費控除など)。

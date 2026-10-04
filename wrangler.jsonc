@@ -20,5 +20,11 @@
       "binding": "PHOTOS",
       "bucket_name": "sukusuku-log-photos"
     }
+  ],
+  // Send Email: 新規家族作成時のメール認証用 (Cloudflare Email Routing)
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
   ]
 }

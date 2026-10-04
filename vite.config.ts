@@ -8,6 +8,11 @@ const BUILD_ID = (process.env.GITHUB_SHA ? process.env.GITHUB_SHA.slice(0, 7) + 
 
 export default defineConfig({
   define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
+  build: {
+    rollupOptions: {
+      external: [/^cloudflare:/]
+    }
+  },
   plugins: [
     build(),
     devServer({

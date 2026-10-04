@@ -102,14 +102,27 @@
         foot + '</div>';
     }
     if (mode === 'create') {
+      const isCodeStep = BA.state.obStep === 'code';
+      const email = BA.state.obEmail || '';
       return '<div class="onboard">' + back + head +
         '<p class="lead">新しい家族を作ります</p>' +
         '<div class="notice warn"><i class="fas fa-triangle-exclamation"></i> パートナーや家族がすでに使い始めている場合は、ここでは作らず、<button class="link-btn" data-act="ob-go" data-mode="join" style="display:inline;min-height:0;padding:0">「招待コードをもらっている」</button>から参加してください。</div>' +
         '<div class="card">' +
-        '<label class="field"><span>あなたの呼び名(記録した人として表示されます)</span><input type="text" id="ob-name" maxlength="30" placeholder="例: ママ、パパ、おばあちゃん" autocomplete="nickname"></label>' +
-        '<p class="muted" style="margin:0 0 10px">作成後、「家族」タブから有効期限つきの招待コードを発行してパートナーや家族を招待できます。</p>' +
-        '<div class="error-text" id="ob-err"></div>' +
-        '<button class="btn primary block" data-act="ob-create"><i class="fas fa-plus"></i>家族を作成する</button></div>' +
+        (isCodeStep
+          ? '<div class="notice" style="border-left-color:var(--primary);margin-bottom:12px"><i class="fas fa-envelope-open-text" style="color:var(--primary)"></i> <b>' + esc(email) + '</b> に6桁の認証コードを送信しました。(有効期限10分)</div>' +
+            '<label class="field"><span>1. 認証コード(数字6桁)</span><input type="text" id="ob-vcode" inputmode="numeric" maxlength="6" placeholder="例: 123456" autocapitalize="off" autocomplete="one-time-code" style="letter-spacing:.25em;font-size:20px;font-weight:700;text-align:center"></label>' +
+            '<label class="field"><span>2. あなたの呼び名(表示名)</span><input type="text" id="ob-name" maxlength="30" placeholder="例: ママ、パパ" autocomplete="nickname"></label>' +
+            '<div class="error-text" id="ob-err"></div>' +
+            '<button class="btn primary block" data-act="ob-create"><i class="fas fa-plus"></i>家族を作成する</button>' +
+            '<div style="display:flex;justify-content:space-between;margin-top:12px;font-size:13px">' +
+            '<button class="link-btn" data-act="ob-resendemail" style="font-size:12px"><i class="fas fa-rotate-right"></i> コードを再送信</button>' +
+            '<button class="link-btn" data-act="ob-changeemail" style="font-size:12px"><i class="fas fa-pen"></i> メールアドレス変更</button></div>'
+          : '<label class="field"><span>メールアドレス</span><input type="email" id="ob-email" maxlength="100" value="' + esc(email) + '" placeholder="例: name@example.com" autocomplete="email"></label>' +
+            '<p class="muted" style="margin:0 0 12px;font-size:12px"><i class="fas fa-shield-halved"></i> 認証コードを受信するためのメールアドレスを入力してください。</p>' +
+            '<div class="error-text" id="ob-err"></div>' +
+            '<button class="btn primary block" data-act="ob-sendcode"><i class="fas fa-paper-plane"></i>認証コードを送信</button>'
+        ) +
+        '</div>' +
         foot + '</div>';
     }
     return '<div class="onboard">' + head +
