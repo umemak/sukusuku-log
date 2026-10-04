@@ -92,11 +92,10 @@ npx wrangler pages secret put GEMINI_MODEL --project-name sukusuku-log
 ローカルでは `.dev.vars`(git管理外)に `GEMINI_API_KEY=...` を書く。`GEMINI_API_BASE` を指定すると別のエンドポイント(テスト用モック)に向けられる。
 シークレットを登録・変更した後は、再デプロイ(または Pages の新しいデプロイ)で反映される。
 
-## メール認証(Cloudflare Email Routing)の設定
-新規家族作成時のメール認証には Cloudflare Email Routing (`send_email` バインディング) を使用します。
-- `wrangler.jsonc` の `send_email` バインディング (`EMAIL`) を通じてメールを送信します。
+## メール認証の設定
+新規家族作成時のメール認証に対応しています。
 - 送信元アドレス (`EMAIL_FROM`) を変更する場合は、Cloudflare Pages の環境変数またはシークレットで設定します (例: `noreply@yourdomain.com`)。
-- ローカル開発時やバインディング未設定時は、送信された認証コードがサーバーコンソール (`wrangler pages dev` の出力) に表示され、そのまま動作確認が可能です。
+- Cloudflare Pages では `send_email` バインディングが設定されていない環境やローカル開発時、送信された認証コードがサーバーコンソール (`wrangler pages dev` の出力) に表示され、そのまま動作確認が可能です。
 
 ## 未実装・今後の候補
 - AI: 離乳食メニュー提案、日記の下書き、受診まとめの要約(今回は音声入力のみ)

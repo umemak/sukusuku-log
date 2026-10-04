@@ -1,5 +1,3 @@
-import { EmailMessage } from 'cloudflare:email'
-
 export interface EmailBindings {
   EMAIL?: {
     send(message: unknown): Promise<void>
@@ -54,6 +52,8 @@ export async function sendVerificationEmail(env: EmailBindings, to: string, code
 
   if (env.EMAIL && typeof env.EMAIL.send === 'function') {
     try {
+      // @ts-ignore
+      const { EmailMessage } = await import('cloudflare:email')
       const raw = buildRawEmail(from, fromName, to, subject, body)
       const msg = new EmailMessage(from, to, raw)
       await env.EMAIL.send(msg)
