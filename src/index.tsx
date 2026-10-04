@@ -57,6 +57,7 @@ const shell = `<!doctype html>
   <script src="/static/app-views.js?v=${V}" defer></script>
   <script src="/static/app-more.js?v=${V}" defer></script>
   <script src="/static/app-voice.js?v=${V}" defer></script>
+  <script src="/static/app-assistant.js?v=${V}" defer></script>
   <script src="/static/app-subsidy.js?v=${V}" defer></script>
   <script src="/static/app-main.js?v=${V}" defer></script>
 </body>

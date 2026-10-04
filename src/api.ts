@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { Context, Next } from 'hono'
-import { parseCare, GeminiError, type GeminiEnv } from './gemini'
+import { parseCare, askAssistant, GeminiError, type GeminiEnv } from './gemini'
 import { sendVerificationEmail, type EmailBindings } from './email'
 
 export type Bindings = { DB: D1Database; PHOTOS: R2Bucket } & EmailBindings & GeminiEnv
@@ -393,6 +393,7 @@ api.post('/families/discard', async (c) => {
   await db.batch([
     db.prepare('DELETE FROM member_tokens WHERE member_id IN (SELECT id FROM members WHERE family_id = ?)').bind(fid),
     db.prepare('DELETE FROM ai_usage WHERE family_id = ?').bind(fid),
+    db.prepare('DELETE FROM ai_chat_messages WHERE family_id = ?').bind(fid),
     db.prepare('DELETE FROM invitations WHERE family_id = ?').bind(fid),
     db.prepare('DELETE FROM members WHERE family_id = ?').bind(fid),
     db.prepare('DELETE FROM families WHERE id = ?').bind(fid)
@@ -412,6 +413,7 @@ api.delete('/members/:id', async (c) => {
     .run()
   if (!r.meta.changes) return c.json({ error: 'not found' }, 404)
   await c.env.DB.prepare('DELETE FROM member_tokens WHERE member_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM ai_chat_messages WHERE member_id = ? AND family_id = ?').bind(id, c.get('familyId')).run()
   return c.json({ ok: true })
 })
 
@@ -523,6 +525,7 @@ api.delete('/children/:id', async (c) => {
     db.prepare('DELETE FROM subsidy_done WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM diary_comments WHERE family_id = ? AND diary_id IN (SELECT id FROM diary WHERE child_id = ?)').bind(fid, id),
     db.prepare('DELETE FROM diary WHERE child_id = ? AND family_id = ?').bind(id, fid),
+    db.prepare('DELETE FROM ai_chat_messages WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM children WHERE id = ? AND family_id = ?').bind(id, fid)
   ])
   const keys = photos.results.map((p) => `${fid}/${p.photo_id}`)
@@ -1115,29 +1118,273 @@ api.post('/ai/parse', async (c) => {
   }
 
   // 回数を先に確保(同時リクエストでも超えないよう、加算してから判定)
-  const row = await c.env.DB
-    .prepare(
-      `INSERT INTO ai_usage (family_id, day, count) VALUES (?, ?, 1)
-       ON CONFLICT(family_id, day) DO UPDATE SET count = count + 1 RETURNING count`
-    )
-    .bind(familyId, jstDay())
-    .first<{ count: number }>()
-  const refund = () =>
-    c.env.DB.prepare('UPDATE ai_usage SET count = MAX(count - 1, 0) WHERE family_id = ? AND day = ?').bind(familyId, jstDay()).run()
-  if ((row?.count ?? 1) > AI_DAILY_LIMIT) {
-    await refund()
+  const quota = await reserveAi(c.env.DB, familyId)
+  if (!quota.ok) {
     return c.json({ error: `AI入力は1日${AI_DAILY_LIMIT}回までです。明日またお使いください(手入力は何度でもできます)` }, 429)
   }
 
   try {
     const result = await parseCare(c.env, input, localNowText(tz))
-    return c.json({ ...result, remaining: Math.max(0, AI_DAILY_LIMIT - (row?.count ?? 1)) })
+    return c.json({ ...result, remaining: quota.remaining })
   } catch (e) {
-    await refund()
+    await quota.refund()
     if (e instanceof GeminiError) return c.json({ error: e.userMessage }, e.status as 502 | 503 | 504)
     throw e
   }
 })
+
+// 家族×日の利用回数を1つ確保する。上限超えなら確保せずに ok:false
+async function reserveAi(db: D1Database, familyId: string) {
+  const day = jstDay()
+  const row = await db
+    .prepare(
+      `INSERT INTO ai_usage (family_id, day, count) VALUES (?, ?, 1)
+       ON CONFLICT(family_id, day) DO UPDATE SET count = count + 1 RETURNING count`
+    )
+    .bind(familyId, day)
+    .first<{ count: number }>()
+  const refund = async () => {
+    await db.prepare('UPDATE ai_usage SET count = MAX(count - 1, 0) WHERE family_id = ? AND day = ?').bind(familyId, day).run()
+  }
+  const count = row?.count ?? 1
+  if (count > AI_DAILY_LIMIT) {
+    await refund()
+    return { ok: false as const }
+  }
+  return { ok: true as const, remaining: Math.max(0, AI_DAILY_LIMIT - count), refund }
+}
+
+// ---------- AIアシスタント(対話・成長レター) ----------
+// 履歴はメンバー本人だけが読める。端末をまたいで引き継げるようD1に保存し、直近50件だけ残す(ADR 0003)
+
+const CHAT_KEEP = 50
+const CHAT_HISTORY_TURNS = 10
+
+type ChatRow = { id: string; role: 'user' | 'model'; content: string; is_letter: number; created_at: number }
+
+api.get('/ai/chat', async (c) => {
+  const childId = c.req.query('child') || ''
+  if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
+  const rs = await c.env.DB
+    .prepare(
+      `SELECT id, role, content, is_letter, created_at FROM ai_chat_messages
+       WHERE member_id = ? AND family_id = ? AND child_id = ? ORDER BY created_at DESC LIMIT ?`
+    )
+    .bind(c.get('memberId'), c.get('familyId'), childId, CHAT_KEEP)
+    .all<ChatRow>()
+  return c.json({ messages: rs.results.reverse().map((m) => ({ ...m, is_letter: !!m.is_letter })) })
+})
+
+api.delete('/ai/chat', async (c) => {
+  await c.env.DB
+    .prepare('DELETE FROM ai_chat_messages WHERE member_id = ? AND family_id = ?')
+    .bind(c.get('memberId'), c.get('familyId'))
+    .run()
+  return c.json({ ok: true })
+})
+
+// 閲覧専用メンバーも使える(記録は変更しない)。回数枠は家族で共有
+api.post('/ai/chat', async (c) => {
+  if (!c.env.GEMINI_API_KEY) return c.json({ error: 'AI機能はまだ設定されていません' }, 503)
+  const familyId = c.get('familyId')
+  const memberId = c.get('memberId')
+  const tz = Math.max(-840, Math.min(840, num(c.req.query('tz')) ?? -540))
+  const body = await readJson(c)
+  const childId = typeof body.childId === 'string' ? body.childId : ''
+  const text = str(body.text, 500)
+  if (!text) return c.json({ error: '質問を入力してください' }, 400)
+  if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
+
+  const db = c.env.DB
+  const hist = await db
+    .prepare(
+      `SELECT role, content FROM ai_chat_messages
+       WHERE member_id = ? AND family_id = ? AND child_id = ? ORDER BY created_at DESC LIMIT ?`
+    )
+    .bind(memberId, familyId, childId, CHAT_HISTORY_TURNS)
+    .all<{ role: 'user' | 'model'; content: string }>()
+  const history = hist.results.reverse()
+  while (history.length && history[0].role !== 'user') history.shift() // 会話は必ず user から始める
+
+  const quota = await reserveAi(db, familyId)
+  if (!quota.ok) return c.json({ error: `AIの利用は1日${AI_DAILY_LIMIT}回までです(家族全体)。明日またお使いください` }, 429)
+
+  let result: Awaited<ReturnType<typeof askAssistant>>
+  try {
+    const context = await buildAssistantContext(db, familyId, childId, tz)
+    result = await askAssistant(c.env, history, text, localNowText(tz), context)
+  } catch (e) {
+    await quota.refund()
+    if (e instanceof GeminiError) return c.json({ error: e.userMessage }, e.status as 502 | 503 | 504)
+    throw e
+  }
+
+  const t = now()
+  const userMsg = { id: uuid(), role: 'user' as const, content: text, is_letter: false, created_at: t }
+  const modelMsg = { id: uuid(), role: 'model' as const, content: result.reply, is_letter: result.isLetter, created_at: t + 1 }
+  const ins = db.prepare(
+    'INSERT INTO ai_chat_messages (id, family_id, member_id, child_id, role, content, is_letter, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  )
+  await db.batch([
+    ins.bind(userMsg.id, familyId, memberId, childId, 'user', userMsg.content, 0, userMsg.created_at),
+    ins.bind(modelMsg.id, familyId, memberId, childId, 'model', modelMsg.content, modelMsg.is_letter ? 1 : 0, modelMsg.created_at),
+    // メンバーごとに直近50件だけ残す
+    db
+      .prepare(
+        `DELETE FROM ai_chat_messages WHERE member_id = ? AND id NOT IN
+         (SELECT id FROM ai_chat_messages WHERE member_id = ? ORDER BY created_at DESC LIMIT ?)`
+      )
+      .bind(memberId, memberId, CHAT_KEEP)
+  ])
+  return c.json({ messages: [userMsg, modelMsg], remaining: quota.remaining })
+})
+
+// AIに渡す記録の要約を組み立てる(1回の呼び出しで答えられるよう、よく聞かれる範囲をまとめて渡す)
+async function buildAssistantContext(db: D1Database, familyId: string, childId: string, tzMin: number): Promise<string> {
+  const t = now()
+  const DAY = 86400000
+  const off = -tzMin * 60000 // ローカル時刻 = UTC + off
+  const p2 = (n: number) => String(n).padStart(2, '0')
+  const fmt = (ms: number) => {
+    const d = new Date(ms + off)
+    return `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${'日月火水木金土'[d.getUTCDay()]}) ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`
+  }
+  const localDayStart = (ms: number) => Math.floor((ms + off) / DAY) * DAY - off
+  const todayStart = localDayStart(t)
+  const from31 = todayStart - 30 * DAY
+  const ymd31 = new Date(from31 + off).toISOString().slice(0, 10)
+
+  const [child, members, lastRs, logsRs, diaryRs, growthRs, foodsRs, vacRs] = await Promise.all([
+    db.prepare('SELECT name, birthday, gender FROM children WHERE id = ? AND family_id = ?').bind(childId, familyId)
+      .first<{ name: string; birthday: string; gender: string }>(),
+    db.prepare('SELECT id, name FROM members WHERE family_id = ?').bind(familyId).all<{ id: string; name: string }>(),
+    db.prepare(
+      `SELECT type, started_at, ended_at, amount, detail, note, member_id FROM logs l
+       WHERE child_id = ? AND family_id = ?
+         AND started_at = (SELECT MAX(started_at) FROM logs WHERE child_id = l.child_id AND type = l.type)`
+    ).bind(childId, familyId).all<LogRow>(),
+    db.prepare(
+      `SELECT type, started_at, ended_at, amount, detail, note, member_id FROM logs
+       WHERE child_id = ? AND family_id = ? AND (started_at >= ? OR (ended_at IS NULL AND type IN ('sleep','breast')))
+       ORDER BY started_at ASC LIMIT 3000`
+    ).bind(childId, familyId, from31 - DAY).all<LogRow>(),
+    db.prepare('SELECT entry_date, body FROM diary WHERE child_id = ? AND family_id = ? AND entry_date >= ? ORDER BY entry_date DESC LIMIT 20')
+      .bind(childId, familyId, ymd31).all<{ entry_date: string; body: string | null }>(),
+    db.prepare('SELECT measured_on, weight_g, height_cm, head_cm FROM growth WHERE child_id = ? AND family_id = ? ORDER BY measured_on DESC LIMIT 4')
+      .bind(childId, familyId).all<{ measured_on: string; weight_g: number | null; height_cm: number | null; head_cm: number | null }>(),
+    db.prepare('SELECT food, tried_on, reaction FROM foods WHERE child_id = ? AND family_id = ? AND tried_on >= ? ORDER BY tried_on DESC LIMIT 40')
+      .bind(childId, familyId, ymd31).all<{ food: string; tried_on: string; reaction: string }>(),
+    db.prepare('SELECT vaccine_key, done_on FROM vaccinations WHERE child_id = ? AND family_id = ? AND done_on >= ? ORDER BY done_on DESC')
+      .bind(childId, familyId, ymd31).all<{ vaccine_key: string; done_on: string }>()
+  ])
+  if (!child) return '(お子さんの情報がありません)'
+
+  const who = new Map(members.results.map((m) => [m.id, m.name]))
+  const out: string[] = []
+
+  const days = Math.floor((todayStart - (Date.parse(child.birthday + 'T00:00:00Z') - off)) / DAY)
+  const gender = child.gender === 'boy' ? '男の子' : child.gender === 'girl' ? '女の子' : '未設定'
+  out.push(`■ お子さん: ${child.name}(${gender}) 生年月日 ${child.birthday} / 生後${days}日(約${Math.floor(days / 30.4)}か月)`)
+
+  out.push('\n■ 種類ごとの最新の記録')
+  const seen = new Set<string>()
+  for (const l of lastRs.results.sort((a, b) => b.started_at - a.started_at)) {
+    if (seen.has(l.type)) continue
+    seen.add(l.type)
+    out.push('- ' + describeLog(l, fmt, who))
+  }
+  if (!seen.size) out.push('- (まだ記録がありません)')
+
+  // 日別の集計(直近31日、ローカル日付)
+  out.push('\n■ 日別のまとめ(新しい順。睡眠は日をまたぐ分を按分)')
+  for (let i = 0; i < 31; i++) {
+    const ds = todayStart - i * DAY
+    const de = ds + DAY
+    let feed = 0, breast = 0, ml = 0, sleepMs = 0, pee = 0, poop = 0, med = 0, bath = 0
+    let maxTemp: number | null = null
+    for (const l of logsRs.results) {
+      if (l.type === 'sleep') {
+        const a = Math.max(l.started_at, ds)
+        const b = Math.min(l.ended_at ?? t, de)
+        if (b > a) sleepMs += b - a
+        continue
+      }
+      if (l.started_at < ds || l.started_at >= de) continue
+      if (l.type === 'breast') { feed++; breast++ }
+      else if (l.type === 'formula' || l.type === 'expressed') { feed++; ml += l.amount || 0 }
+      else if (l.type === 'pee') pee++
+      else if (l.type === 'poop') poop++
+      else if (l.type === 'med') med++
+      else if (l.type === 'bath') bath++
+      else if (l.type === 'temp' && l.amount != null) maxTemp = Math.max(maxTemp ?? 0, l.amount)
+    }
+    const total = feed + pee + poop + med + bath + (maxTemp != null ? 1 : 0) + (sleepMs ? 1 : 0)
+    const label = fmt(ds).split(' ')[0] + (i === 0 ? '[今日・途中]' : '')
+    if (!total) { out.push(`- ${label}: 記録なし`); continue }
+    const parts = [
+      `授乳${feed}回(母乳${breast}回・ミルク等${Math.round(ml)}ml)`,
+      `睡眠${Math.floor(sleepMs / 3600000)}時間${Math.round((sleepMs % 3600000) / 60000)}分`,
+      `おしっこ${pee}回`, `うんち${poop}回`
+    ]
+    if (maxTemp != null) parts.push(`最高体温${maxTemp}℃`)
+    if (med) parts.push(`薬${med}回`)
+    if (bath) parts.push(`お風呂${bath}回`)
+    out.push(`- ${label}: ${parts.join(' / ')}`)
+  }
+
+  out.push('\n■ 直近48時間の記録(古い順)')
+  const recent = logsRs.results.filter((l) => l.started_at >= t - 2 * DAY || l.ended_at == null)
+  if (!recent.length) out.push('- (記録なし)')
+  for (const l of recent.slice(-300)) out.push('- ' + describeLog(l, fmt, who))
+
+  out.push('\n■ 思い出日記(直近31日)')
+  if (!diaryRs.results.length) out.push('- (なし)')
+  for (const d of diaryRs.results) out.push(`- ${d.entry_date}: ${(d.body || '(写真のみ)').replace(/\s+/g, ' ').slice(0, 200)}`)
+
+  out.push('\n■ 成長記録(新しい順)')
+  if (!growthRs.results.length) out.push('- (なし)')
+  for (const g of growthRs.results) {
+    const v = [g.weight_g != null ? `体重${g.weight_g}g` : '', g.height_cm != null ? `身長${g.height_cm}cm` : '', g.head_cm != null ? `頭囲${g.head_cm}cm` : '']
+    out.push(`- ${g.measured_on}: ${v.filter(Boolean).join(' / ')}`)
+  }
+
+  if (foodsRs.results.length) {
+    out.push('\n■ 離乳食(直近31日)')
+    const R: Record<string, string> = { ok: '問題なし', mild: '軽い症状', severe: '強い症状' }
+    for (const f of foodsRs.results) out.push(`- ${f.tried_on}: ${f.food.slice(0, 40)}(${R[f.reaction] || f.reaction})`)
+  }
+  if (vacRs.results.length) {
+    out.push('\n■ 予防接種(直近31日に接種済み)')
+    for (const v of vacRs.results) out.push(`- ${v.done_on}: ${v.vaccine_key}`)
+  }
+  return out.join('\n')
+}
+
+type LogRow = { type: string; started_at: number; ended_at: number | null; amount: number | null; detail: string | null; note: string | null; member_id: string | null }
+
+const LOG_LABEL: Record<string, string> = {
+  breast: '母乳', formula: 'ミルク', expressed: '搾母乳', sleep: '睡眠', pee: 'おしっこ',
+  poop: 'うんち', temp: '体温', bath: 'お風呂', med: '薬', memo: 'メモ'
+}
+
+function describeLog(l: LogRow, fmt: (ms: number) => string, who: Map<string, string>): string {
+  let d: Record<string, unknown> = {}
+  try { d = l.detail ? JSON.parse(l.detail) || {} : {} } catch { d = {} }
+  let s = `${fmt(l.started_at)} ${LOG_LABEL[l.type] || l.type}`
+  if (l.type === 'breast' || l.type === 'sleep') {
+    if (l.ended_at == null) s += '(計測中)'
+    else s += `(${Math.round((l.ended_at - l.started_at) / 60000)}分)`
+  }
+  if (l.type === 'breast' && typeof d.side === 'string') s += ` ${({ left: '左', right: '右', both: '両方' } as Record<string, string>)[d.side] || ''}`
+  if ((l.type === 'formula' || l.type === 'expressed') && l.amount != null) s += ` ${l.amount}ml`
+  if (l.type === 'temp' && l.amount != null) s += ` ${l.amount}℃`
+  if (l.type === 'poop' && typeof d.kind === 'string') s += ` ${({ hard: 'かため', normal: 'ふつう', soft: 'やわらかめ', watery: '水っぽい' } as Record<string, string>)[d.kind] || ''}`
+  if (l.type === 'med' && typeof d.name === 'string') s += ` ${d.name.slice(0, 60)}`
+  if (l.note) s += ` メモ:「${l.note.replace(/\s+/g, ' ').slice(0, 120)}」`
+  const by = l.member_id ? who.get(l.member_id) : null
+  if (by) s += ` [記録:${by}]`
+  return s
+}
 
 api.notFound((c) => c.json({ error: 'not found' }, 404))
 api.onError((e, c) => {

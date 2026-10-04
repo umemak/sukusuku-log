@@ -223,6 +223,7 @@
       (timers ? '<section aria-label="計測中">' + timers + '</section>' : '') +
       (V.subsidyHint ? V.subsidyHint() : '') +
       quickCard +
+      (BA.ai && BA.ai.enabled ? '<button class="asst-open" data-act="assistant"><span class="qi"><i class="fas fa-wand-magic-sparkles"></i></span><span class="asst-open-t"><b>AIアシスタントに聞く</b><small>「最後のうんちは?」・成長レター</small></span><i class="fas fa-chevron-right"></i></button>' : '') +
       '<section class="card" aria-label="今日のまとめ"><h2><i class="fas fa-calendar-day" style="color:var(--primary)"></i>今日のまとめ</h2>' +
       '<div class="today-stats">' +
       '<div><div class="n">' + s.feed + '<small>回</small></div><div class="l">授乳</div></div>' +

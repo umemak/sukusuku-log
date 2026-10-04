@@ -294,6 +294,7 @@
       if (BA.isViewer()) return;
       BA.openVoice();
     },
+    assistant: () => BA.openAssistant(),
     stoptimer: (el) => {
       if (BA.isViewer()) return;
       BA.stopTimer(el.dataset.id);

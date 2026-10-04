@@ -3,7 +3,7 @@
 ## Project Overview
 - **Name**: すくすくログ(webapp)
 - **Goal**: 新生児期からの育児記録を、家族みんなで共有しながら続けられるようにする
-- **Features**: ワンタップ記録 / 授乳・睡眠タイマー / 家族コード共有 / 日次・期間まとめ / 成長グラフ(WHOパーセンタイル) / 予防接種スケジュール / 離乳食・アレルギー記録 / 写真つき思い出日記 / 家事・育児の分担 / 受診用まとめ / ダークモード / PWA
+- **Features**: ワンタップ記録 / AIアシスタント・成長レター / 授乳・睡眠タイマー / 家族コード共有 / 日次・期間まとめ / 成長グラフ(WHOパーセンタイル) / 予防接種スケジュール / 離乳食・アレルギー記録 / 写真つき思い出日記 / 家事・育児の分担 / 受診用まとめ / ダークモード / PWA
 
 ## URLs
 - **Dev (sandbox)**: `pm2 start ecosystem.config.cjs` 後に http://localhost:3000
@@ -30,12 +30,13 @@
 - **思い出タブ**: 写真(端末側で縮小したJPEG、R2に保存)とひとことの日記。月齢つき、編集・削除可。家族メンバーで感想や返信コメントを付け合うことができ、閲覧専用ユーザーもコメントが可能。写真は家族メンバーだけが認証付きで取得できる。
 - **家族タブ**: 有効な招待コードの一覧・招待リンクのコピー/共有・招待の取り消し・新しい招待コードの発行(記録用 / 閲覧用)、メンバー一覧(権限バッジ・権限切り替え・**削除**)、複数の子ども(きょうだい)、テーマ切替、連携解除
 - **声・文章でまとめて記録(Gemini)**: ホームの「声・文章でまとめて記録」から、話しかける(最大30秒)か文章で入力 → AIが記録の候補に変換 → 確認・修正してから保存。例「さっきミルク120と、おしっこ。うんちはやわらかめ」。`GEMINI_API_KEY` を設定した環境でのみボタンが表示される(閲覧専用ユーザーには非表示)。1家族あたり1日40回まで(日本時間)。AIは記録の抽出だけを行い、診断や助言はしない。音声・文章はGoogle(Gemini API)に送信され、アプリ側には保存しない(有料枠のキー前提)。
+- **AIアシスタント(Gemini)**: ホームの「AIアシスタントに聞く」から、記録について対話形式で質問できる(例「最後のうんちはいつ?」「今日ミルク何ml?」)。「今週の成長レター」などのクイックボタンつき。**成長レター**は「思い出日記に保存」で日記の下書きにできる(記録権限のあるメンバーのみ)。閲覧専用メンバーも利用可。履歴は**本人だけ**が見られ、端末をまたいで引き継がれる(メンバーごとに直近50件、手動クリア可)。回数は「声・文章で記録」と合わせて1家族1日40回。直近48時間の記録・31日分の日別まとめ・日記・成長記録などをサーバー側で要約してAIに渡す(ADR 0003)。診断や医療的な助言はしない。
 - 他端末の記録は20秒ごと、および画面を開き直したときに自動で反映される。
 
 ## Data Architecture
-- **Storage**: Cloudflare D1(SQLite)。`migrations/0001_initial_schema.sql`, `0002_diary_foods.sql`, `0006_member_role.sql`, `0007_invitations.sql`, `0008_email_verifications.sql`, `0009_diary_comments.sql`
+- **Storage**: Cloudflare D1(SQLite)。`migrations/0001_initial_schema.sql`, `0002_diary_foods.sql`, `0006_member_role.sql`, `0007_invitations.sql`, `0008_email_verifications.sql`, `0009_diary_comments.sql`, `0010_ai_chat.sql`
 - **Object storage**: Cloudflare R2(バケット `sukusuku-log-photos`、バインディング `PHOTOS`、キーは `<family_id>/<photo_id>`)
-- **Tables**: families / members(role: 'editor' | 'viewer') / children / logs / growth / vaccinations / foods / diary / diary_comments(写真・日記へのコメント) / ai_usage(AI利用回数) / member_tokens(追加端末の鍵) / invitations(ワンタイム招待コード) / email_verifications(メール認証コード)
+- **Tables**: families / members(role: 'editor' | 'viewer') / children / logs / growth / vaccinations / foods / diary / diary_comments(写真・日記へのコメント) / ai_usage(AI利用回数) / ai_chat_messages(AIアシスタントの対話履歴。メンバー本人のみ) / member_tokens(追加端末の鍵) / invitations(ワンタイム招待コード) / email_verifications(メール認証コード)
 - **WHO データ**: `public/static/who-lms.js`(Weight-for-age / Length(Height)-for-age / Head circumference-for-age の LMS 表、0〜5歳)
 - **認証**: 端末ごとのランダムトークン(localStorage)。DBにはSHA-256ハッシュのみ保存。全APIが家族IDで絞り込み、書き込みAPIは `editor` 権限を要求(日記コメント投稿は閲覧専用ユーザーも許可)。
 
@@ -65,6 +66,9 @@
 | GET, PUT/DELETE | /children/:id/vaccinations[/:key] | 接種記録(PUT/DELETEはeditorのみ) |
 | GET | /ai/status | AI機能の有効/無効と今日の残り回数 |
 | POST | /ai/parse?tz= | 音声または `{text}` → 記録候補 (editorのみ) |
+| GET | /ai/chat?child= | 自分のAIアシスタント履歴(直近50件) |
+| POST | /ai/chat?tz= | `{childId, text}` → AIアシスタントの返答(閲覧専用ユーザーも可、1日の回数枠を家族で共有) |
+| DELETE | /ai/chat | 自分のAIアシスタント履歴をすべて削除 |
 
 ## ローカル開発
 ```

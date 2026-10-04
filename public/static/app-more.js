@@ -136,10 +136,10 @@
       '</main>' + V.tabbar();
   };
 
-  BA.openDiary = function (entry) {
+  BA.openDiary = function (entry, prefill) {
     if (!entry) {
       if (BA.isViewer()) return;
-      const st = { date: BA.ymd(Date.now()), body: '', blob: null, preview: null };
+      const st = { date: BA.ymd(Date.now()), body: (prefill && prefill.body) || '', blob: null, preview: null };
       const revoke = () => { if (st.preview) { URL.revokeObjectURL(st.preview); st.preview = null; } };
       function renderNew() {
         const photo = '<label class="btn block photo-pick"><i class="fas fa-camera"></i>' + (st.blob ? '写真を選びなおす' : '写真を選ぶ・撮影する') +
