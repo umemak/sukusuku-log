@@ -292,13 +292,12 @@ api.post('/join', async (c) => {
 // ---------- 認証 ----------
 
 api.use('*', async (c: Context<Env>, next: Next) => {
-  const path = c.req.path
-  if (
-    path.endsWith('/families') ||
-    path.endsWith('/join') ||
-    path.endsWith('/invitations/check') ||
-    path.endsWith('/auth/send-code')
-  ) return next()
+  const path = c.req.path.replace(/^\/api/, '')
+  const method = c.req.method
+  const isPublic =
+    (method === 'POST' && (path === '/families' || path === '/join' || path === '/auth/send-code')) ||
+    (method === 'GET' && path === '/invitations/check')
+  if (isPublic) return next()
   const auth = c.req.header('Authorization') || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''
   if (!token) return c.json({ error: 'unauthorized' }, 401)
