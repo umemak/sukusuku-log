@@ -257,6 +257,12 @@ api.post('/join', async (c) => {
     .first<{ id: string; name: string; role: string }>()
 
   if (existing) {
+    if (existing.role !== assignedRole) {
+      return c.json({
+        error: `「${existing.name}」というメンバーはすでに存在しますが、招待コードの権限（${assignedRole === 'viewer' ? '閲覧専用' : '記録可能'}）と一致しません。別の呼び名を入力してください`
+      }, 400)
+    }
+
     await db.batch([
       db.prepare('INSERT INTO member_tokens (token_hash, member_id, created_at) VALUES (?, ?, ?)')
         .bind(tokenHash, existing.id, t),
@@ -266,7 +272,7 @@ api.post('/join', async (c) => {
     return c.json({
       token,
       memberId: existing.id,
-      role: existing.role || 'editor',
+      role: existing.role,
       linked: true,
       memberName: existing.name
     })
