@@ -513,8 +513,10 @@ api.delete('/children/:id', async (c) => {
   const own = await db.prepare('SELECT 1 FROM children WHERE id = ? AND family_id = ?').bind(id, fid).first()
   if (!own) return c.json({ error: 'not found' }, 404)
   const photos = await db
-    .prepare('SELECT photo_id FROM diary WHERE child_id = ? AND family_id = ? AND photo_id IS NOT NULL')
-    .bind(id, fid)
+    .prepare(
+      'SELECT photo_id FROM diary_photos WHERE child_id = ? AND family_id = ? UNION SELECT photo_id FROM diary WHERE child_id = ? AND family_id = ? AND photo_id IS NOT NULL'
+    )
+    .bind(id, fid, id, fid)
     .all<{ photo_id: string }>()
   await db.batch([
     db.prepare('DELETE FROM logs WHERE child_id = ? AND family_id = ?').bind(id, fid),
@@ -523,6 +525,7 @@ api.delete('/children/:id', async (c) => {
     db.prepare('DELETE FROM foods WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM subsidy_done WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM diary_comments WHERE family_id = ? AND diary_id IN (SELECT id FROM diary WHERE child_id = ?)').bind(fid, id),
+    db.prepare('DELETE FROM diary_photos WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM diary WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM ai_chat_messages WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM children WHERE id = ? AND family_id = ?').bind(id, fid)
@@ -922,8 +925,10 @@ api.delete('/photos/:id', async (c) => {
   const id = c.req.param('id')
   if (!ID_RE.test(id)) return c.json({ error: 'not found' }, 404)
   const used = await c.env.DB
-    .prepare('SELECT 1 FROM diary WHERE photo_id = ? AND family_id = ?')
-    .bind(id, c.get('familyId'))
+    .prepare(
+      'SELECT 1 FROM diary WHERE photo_id = ? AND family_id = ? UNION SELECT 1 FROM diary_photos WHERE photo_id = ? AND family_id = ?'
+    )
+    .bind(id, c.get('familyId'), id, c.get('familyId'))
     .first()
   if (!used) {
     await c.env.PHOTOS.delete([`${c.get('familyId')}/${id}`, `${c.get('familyId')}/${id}_thumb`])
@@ -938,6 +943,7 @@ api.get('/children/:id/diary', async (c) => {
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
   const fid = c.get('familyId')
   const month = c.req.query('month')
+  let diaryRows: Array<{ id: string; member_id: string; entry_date: string; body: string | null; photo_id: string | null; comment_count: number }> = []
   if (month && /^\d{4}-\d{2}$/.test(month)) {
     const from = `${month}-01`
     const to = `${month}-31`
@@ -951,19 +957,52 @@ api.get('/children/:id/diary', async (c) => {
       )
       .bind(childId, fid, from, to)
       .all()
-    return c.json({ diary: rs.results })
+    diaryRows = rs.results as any
+  } else {
+    const limit = Math.min(Math.max(num(c.req.query('limit')) ?? 100, 1), 300)
+    const rs = await c.env.DB
+      .prepare(
+        `SELECT d.id, d.member_id, d.entry_date, d.body, d.photo_id,
+          (SELECT COUNT(*) FROM diary_comments c WHERE c.diary_id = d.id AND c.family_id = d.family_id) AS comment_count
+         FROM diary d
+         WHERE d.child_id = ? AND d.family_id = ? ORDER BY d.entry_date DESC, d.created_at DESC LIMIT ?`
+      )
+      .bind(childId, fid, limit)
+      .all()
+    diaryRows = rs.results as any
   }
-  const limit = Math.min(Math.max(num(c.req.query('limit')) ?? 100, 1), 300)
-  const rs = await c.env.DB
+
+  if (diaryRows.length === 0) {
+    return c.json({ diary: [] })
+  }
+
+  // diary_photos を取得して紐づけ
+  const photosRs = await c.env.DB
     .prepare(
-      `SELECT d.id, d.member_id, d.entry_date, d.body, d.photo_id,
-        (SELECT COUNT(*) FROM diary_comments c WHERE c.diary_id = d.id AND c.family_id = d.family_id) AS comment_count
-       FROM diary d
-       WHERE d.child_id = ? AND d.family_id = ? ORDER BY d.entry_date DESC, d.created_at DESC LIMIT ?`
+      `SELECT diary_id, photo_id, sort_order
+       FROM diary_photos
+       WHERE child_id = ? AND family_id = ?
+       ORDER BY sort_order ASC`
     )
-    .bind(childId, fid, limit)
-    .all()
-  return c.json({ diary: rs.results })
+    .bind(childId, fid)
+    .all<{ diary_id: string; photo_id: string; sort_order: number }>()
+
+  const photoMap = new Map<string, string[]>()
+  for (const p of photosRs.results) {
+    if (!photoMap.has(p.diary_id)) photoMap.set(p.diary_id, [])
+    photoMap.get(p.diary_id)!.push(p.photo_id)
+  }
+
+  const diary = diaryRows.map((d) => {
+    const photos = photoMap.get(d.id) || (d.photo_id ? [d.photo_id] : [])
+    return {
+      ...d,
+      photos,
+      photo_id: photos[0] || null
+    }
+  })
+
+  return c.json({ diary })
 })
 
 api.post('/children/:id/diary', async (c) => {
@@ -974,41 +1013,125 @@ api.post('/children/:id/diary', async (c) => {
   const body = await readJson(c)
   if (!isDate(body.entry_date)) return c.json({ error: '日付を入力してください' }, 400)
   const text = str(body.body, 2000)
-  let photoId: string | null = null
-  if (body.photo_id) {
-    if (typeof body.photo_id !== 'string' || !ID_RE.test(body.photo_id)) return c.json({ error: '写真が不正です' }, 400)
-    const head = await c.env.PHOTOS.head(`${c.get('familyId')}/${body.photo_id}`)
-    if (!head) return c.json({ error: '写真が見つかりません。もう一度選択してください' }, 400)
-    photoId = body.photo_id
+
+  let photoIds: string[] = []
+  if (Array.isArray(body.photo_ids)) {
+    photoIds = body.photo_ids.filter((p: unknown): p is string => typeof p === 'string' && ID_RE.test(p))
+  } else if (body.photo_id && typeof body.photo_id === 'string' && ID_RE.test(body.photo_id)) {
+    photoIds = [body.photo_id]
   }
-  if (!text && !photoId) return c.json({ error: '写真かひとことを入力してください' }, 400)
+
+  if (photoIds.length > 10) {
+    return c.json({ error: '写真は1回につき最大10枚までです' }, 400)
+  }
+
+  for (const pid of photoIds) {
+    const head = await c.env.PHOTOS.head(`${c.get('familyId')}/${pid}`)
+    if (!head) return c.json({ error: '写真が見つかりません。もう一度選択してください' }, 400)
+  }
+
+  const primaryPhotoId = photoIds[0] || null
+  if (!text && !primaryPhotoId) return c.json({ error: '写真かひとことを入力してください' }, 400)
+
   const id = uuid()
   const t = now()
-  await c.env.DB
-    .prepare(
-      `INSERT INTO diary (id, family_id, child_id, member_id, entry_date, body, photo_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  const fid = c.get('familyId')
+
+  const batchOps = [
+    c.env.DB
+      .prepare(
+        `INSERT INTO diary (id, family_id, child_id, member_id, entry_date, body, photo_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(id, fid, childId, c.get('memberId'), body.entry_date, text, primaryPhotoId, t, t)
+  ]
+
+  photoIds.forEach((pid, idx) => {
+    batchOps.push(
+      c.env.DB
+        .prepare(
+          `INSERT INTO diary_photos (id, family_id, child_id, diary_id, photo_id, sort_order, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(uuid(), fid, childId, id, pid, idx, t)
     )
-    .bind(id, c.get('familyId'), childId, c.get('memberId'), body.entry_date, text, photoId, t, t)
-    .run()
-  return c.json({ id })
+  })
+
+  await c.env.DB.batch(batchOps)
+  return c.json({ id, photo_id: primaryPhotoId, photos: photoIds })
 })
 
 api.put('/diary/:id', async (c) => {
   const denied = requireEditor(c)
   if (denied) return denied
+  const diaryId = c.req.param('id')
+  if (!ID_RE.test(diaryId)) return c.json({ error: 'not found' }, 404)
+  const fid = c.get('familyId')
   const body = await readJson(c)
   if (!isDate(body.entry_date)) return c.json({ error: '日付を入力してください' }, 400)
   const text = str(body.body, 2000)
+
   const cur = await c.env.DB
-    .prepare('SELECT photo_id FROM diary WHERE id = ? AND family_id = ?')
-    .bind(c.req.param('id'), c.get('familyId'))
-    .first<{ photo_id: string | null }>()
+    .prepare('SELECT child_id, photo_id FROM diary WHERE id = ? AND family_id = ?')
+    .bind(diaryId, fid)
+    .first<{ child_id: string; photo_id: string | null }>()
   if (!cur) return c.json({ error: 'not found' }, 404)
+
+  if (body.photo_ids !== undefined) {
+    if (!Array.isArray(body.photo_ids)) return c.json({ error: '写真の指定が不正です' }, 400)
+    const photoIds = body.photo_ids.filter((p: unknown): p is string => typeof p === 'string' && ID_RE.test(p))
+    if (photoIds.length > 10) return c.json({ error: '写真は1回につき最大10枚までです' }, 400)
+    if (!text && photoIds.length === 0) return c.json({ error: '写真かひとことを入力してください' }, 400)
+
+    const oldPhotosRs = await c.env.DB
+      .prepare('SELECT photo_id FROM diary_photos WHERE diary_id = ? AND family_id = ?')
+      .bind(diaryId, fid)
+      .all<{ photo_id: string }>()
+    const oldPhotoIds = new Set(oldPhotosRs.results.map((r) => r.photo_id))
+    if (cur.photo_id) oldPhotoIds.add(cur.photo_id)
+
+    const newPhotoIdsSet = new Set(photoIds)
+    const toDeleteFromR2: string[] = []
+    for (const opid of oldPhotoIds) {
+      if (!newPhotoIdsSet.has(opid)) {
+        toDeleteFromR2.push(`${fid}/${opid}`, `${fid}/${opid}_thumb`)
+      }
+    }
+
+    const t = now()
+    const primaryPhotoId = photoIds[0] || null
+    const batchOps = [
+      c.env.DB
+        .prepare('UPDATE diary SET entry_date = ?, body = ?, photo_id = ?, updated_at = ? WHERE id = ? AND family_id = ?')
+        .bind(body.entry_date, text, primaryPhotoId, t, diaryId, fid),
+      c.env.DB
+        .prepare('DELETE FROM diary_photos WHERE diary_id = ? AND family_id = ?')
+        .bind(diaryId, fid)
+    ]
+
+    photoIds.forEach((pid, idx) => {
+      batchOps.push(
+        c.env.DB
+          .prepare(
+            `INSERT INTO diary_photos (id, family_id, child_id, diary_id, photo_id, sort_order, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(uuid(), fid, cur.child_id, diaryId, pid, idx, t)
+      )
+    })
+
+    await c.env.DB.batch(batchOps)
+    if (toDeleteFromR2.length > 0) {
+      await c.env.PHOTOS.delete(toDeleteFromR2)
+    }
+    return c.json({ ok: true, photo_id: primaryPhotoId, photos: photoIds })
+  }
+
+  // 写真更新なしの場合
   if (!text && !cur.photo_id) return c.json({ error: '写真かひとことを入力してください' }, 400)
   await c.env.DB
     .prepare('UPDATE diary SET entry_date = ?, body = ?, updated_at = ? WHERE id = ? AND family_id = ?')
-    .bind(body.entry_date, text, now(), c.req.param('id'), c.get('familyId'))
+    .bind(body.entry_date, text, now(), diaryId, fid)
     .run()
   return c.json({ ok: true })
 })
@@ -1016,17 +1139,30 @@ api.put('/diary/:id', async (c) => {
 api.delete('/diary/:id', async (c) => {
   const denied = requireEditor(c)
   if (denied) return denied
-  const row = await c.env.DB
-    .prepare('SELECT photo_id FROM diary WHERE id = ? AND family_id = ?')
-    .bind(c.req.param('id'), c.get('familyId'))
-    .first<{ photo_id: string | null }>()
-  if (!row) return c.json({ error: 'not found' }, 404)
+  const diaryId = c.req.param('id')
+  if (!ID_RE.test(diaryId)) return c.json({ error: 'not found' }, 404)
+  const fid = c.get('familyId')
+
+  const photosRs = await c.env.DB
+    .prepare(
+      'SELECT photo_id FROM diary_photos WHERE diary_id = ? AND family_id = ? UNION SELECT photo_id FROM diary WHERE id = ? AND family_id = ? AND photo_id IS NOT NULL'
+    )
+    .bind(diaryId, fid, diaryId, fid)
+    .all<{ photo_id: string }>()
+
   await c.env.DB.batch([
-    c.env.DB.prepare('DELETE FROM diary_comments WHERE diary_id = ? AND family_id = ?').bind(c.req.param('id'), c.get('familyId')),
-    c.env.DB.prepare('DELETE FROM diary WHERE id = ? AND family_id = ?').bind(c.req.param('id'), c.get('familyId'))
+    c.env.DB.prepare('DELETE FROM diary_comments WHERE diary_id = ? AND family_id = ?').bind(diaryId, fid),
+    c.env.DB.prepare('DELETE FROM diary_photos WHERE diary_id = ? AND family_id = ?').bind(diaryId, fid),
+    c.env.DB.prepare('DELETE FROM diary WHERE id = ? AND family_id = ?').bind(diaryId, fid)
   ])
-  if (row.photo_id) {
-    await c.env.PHOTOS.delete([`${c.get('familyId')}/${row.photo_id}`, `${c.get('familyId')}/${row.photo_id}_thumb`])
+
+  const keys: string[] = []
+  for (const r of photosRs.results) {
+    keys.push(`${fid}/${r.photo_id}`)
+    keys.push(`${fid}/${r.photo_id}_thumb`)
+  }
+  if (keys.length > 0) {
+    await c.env.PHOTOS.delete(keys)
   }
   return c.json({ ok: true })
 })

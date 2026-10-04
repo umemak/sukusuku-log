@@ -432,7 +432,11 @@
       if (BA.isViewer()) return;
       BA.openDiary(null);
     },
-    editdiary: (el) => { const d = (BA.data.diary || []).find((x) => x.id === el.dataset.id); if (d) BA.openDiary(d); },
+    editdiary: (el) => {
+      const d = (BA.data.diary || []).find((x) => x.id === el.dataset.id);
+      const photoIdx = el.dataset.photoIdx !== undefined ? parseInt(el.dataset.photoIdx, 10) : 0;
+      if (d) BA.openDiary(d, { initialPhotoIdx: photoIdx });
+    },
     setdiaryview: (el) => {
       const mode = el.dataset.mode;
       if (!mode) return;

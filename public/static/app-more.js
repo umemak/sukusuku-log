@@ -162,24 +162,33 @@
 
     let contentHtml = '';
     if (mode === 'grid') {
-      const photoEntries = list.filter((d) => d.photo_id);
-      if (photoEntries.length === 0) {
+      const gridItems = [];
+      for (const d of list) {
+        const pList = (d.photos && d.photos.length) ? d.photos : (d.photo_id ? [d.photo_id] : []);
+        const dateStr = d.entry_date ? d.entry_date.slice(5).replace(/-/g, '/') : '';
+        pList.forEach((pid, pIdx) => {
+          const commentBadge = (pIdx === 0 && d.comment_count)
+            ? '<span class="diary-grid-comments"><i class="fas fa-comment"></i> ' + d.comment_count + '</span>'
+            : '';
+          const multiBadge = pList.length > 1
+            ? '<span class="diary-grid-multi"><i class="fas fa-images"></i> ' + (pIdx + 1) + '/' + pList.length + '</span>'
+            : '';
+          gridItems.push(
+            '<button class="diary-grid-item" data-act="editdiary" data-id="' + d.id + '" data-photo-idx="' + pIdx + '" aria-label="' + esc(d.entry_date) + 'の思い出 (' + (pIdx + 1) + '/' + pList.length + ')">' +
+            '<img data-photo="' + pid + '" data-thumb="1" alt="思い出の写真">' +
+            '<span class="diary-grid-date">' + esc(dateStr) + '</span>' +
+            commentBadge +
+            multiBadge +
+            '</button>'
+          );
+        });
+      }
+      if (gridItems.length === 0) {
         contentHtml = '<div class="card"><div class="empty">' +
           (selectedMonth ? 'この月の写真付きの思い出はまだありません。' : '写真付きの思い出がまだありません。<br>最初の1枚を残してみましょう。') +
           '</div></div>';
       } else {
-        const gridItems = photoEntries.map((d) => {
-          const dateStr = d.entry_date ? d.entry_date.slice(5).replace(/-/g, '/') : '';
-          const commentBadge = d.comment_count
-            ? '<span class="diary-grid-comments"><i class="fas fa-comment"></i> ' + d.comment_count + '</span>'
-            : '';
-          return '<button class="diary-grid-item" data-act="editdiary" data-id="' + d.id + '" aria-label="' + esc(d.entry_date) + 'の思い出">' +
-            '<img data-photo="' + d.photo_id + '" data-thumb="1" alt="思い出の写真">' +
-            '<span class="diary-grid-date">' + esc(dateStr) + '</span>' +
-            commentBadge +
-            '</button>';
-        }).join('');
-        contentHtml = '<section class="diary-grid" aria-label="写真一覧">' + gridItems + '</section>';
+        contentHtml = '<section class="diary-grid" aria-label="写真一覧">' + gridItems.join('') + '</section>';
       }
     } else {
       if (list.length === 0) {
@@ -192,8 +201,19 @@
           const commentBadge = d.comment_count
             ? '<span class="badge" style="margin-left:auto"><i class="fas fa-comment"></i> ' + d.comment_count + '</span>'
             : '';
+          const pList = (d.photos && d.photos.length) ? d.photos : (d.photo_id ? [d.photo_id] : []);
+          let photoHtml = '';
+          if (pList.length > 0) {
+            const countBadge = pList.length > 1
+              ? '<span class="diary-card-count"><i class="fas fa-clone"></i> ' + pList.length + '枚</span>'
+              : '';
+            photoHtml = '<div class="diary-card-photo-wrap">' +
+              '<img data-photo="' + pList[0] + '" alt="思い出の写真">' +
+              countBadge +
+              '</div>';
+          }
           return '<button class="diary-card" data-act="editdiary" data-id="' + d.id + '">' +
-            (d.photo_id ? '<img data-photo="' + d.photo_id + '" alt="思い出の写真">' : '') +
+            photoHtml +
             '<span class="diary-body"><span class="diary-meta"><span>' + esc(d.entry_date.replace(/-/g, '/')) + '</span><span class="badge">' + esc(ageAt(c.birthday, d.entry_date)) + '</span>' +
             (who ? '<span>' + esc(who) + '</span>' : '') +
             commentBadge + '</span>' +
@@ -216,49 +236,123 @@
   BA.openDiary = function (entry, prefill) {
     if (!entry) {
       if (BA.isViewer()) return;
-      const st = { date: BA.ymd(Date.now()), body: (prefill && prefill.body) || '', blob: null, thumbBlob: null, preview: null };
-      const revoke = () => { if (st.preview) { URL.revokeObjectURL(st.preview); st.preview = null; } };
+      const st = {
+        date: BA.ymd(Date.now()),
+        body: (prefill && prefill.body) || '',
+        photos: []
+      };
+      const revoke = () => {
+        st.photos.forEach((p) => { if (p.preview) URL.revokeObjectURL(p.preview); });
+      };
+
       function renderNew() {
-        const photo = '<label class="btn block photo-pick"><i class="fas fa-camera"></i>' + (st.blob ? '写真を選びなおす' : '写真を選ぶ・撮影する') +
-          '<input type="file" accept="image/*" data-act="pickphoto" aria-label="写真を選ぶ"></label>' +
-          (st.preview ? '<img class="photo-preview" src="' + st.preview + '" alt="選択した写真のプレビュー">' : '') +
-          '<div style="height:14px"></div>';
-        return photo +
+        const photoItems = st.photos.map((p, idx) => {
+          return '<div class="diary-photo-thumb-wrap">' +
+            '<img class="diary-photo-thumb" src="' + p.preview + '" alt="写真プレビュー">' +
+            '<button type="button" class="diary-photo-del" data-act="delnewphoto" data-idx="' + idx + '" title="削除" aria-label="写真を削除"><i class="fas fa-times"></i></button>' +
+            (st.photos.length > 1 ? '<div class="diary-photo-order">' +
+              (idx > 0 ? '<button type="button" class="diary-photo-move" data-act="movenewphoto" data-idx="' + idx + '" data-dir="-1" title="前へ" aria-label="前へ"><i class="fas fa-chevron-left"></i></button>' : '<span></span>') +
+              '<span>' + (idx + 1) + '</span>' +
+              (idx < st.photos.length - 1 ? '<button type="button" class="diary-photo-move" data-act="movenewphoto" data-idx="' + idx + '" data-dir="1" title="次へ" aria-label="次へ"><i class="fas fa-chevron-right"></i></button>' : '<span></span>') +
+            '</div>' : '') +
+          '</div>';
+        }).join('');
+
+        const addBtn = st.photos.length < 10
+          ? '<label class="diary-photo-add">' +
+              '<i class="fas fa-camera" style="font-size:18px"></i>' +
+              '<span>' + (st.photos.length === 0 ? '写真を選ぶ' : '写真を追加') + '</span>' +
+              '<input type="file" accept="image/*" multiple data-act="pickphoto" aria-label="写真を選ぶ">' +
+            '</label>'
+          : '';
+
+        const photosSection =
+          '<div class="diary-photo-strip">' + photoItems + addBtn + '</div>' +
+          '<div class="muted" style="font-size:12px;margin:2px 0 12px;display:flex;justify-content:space-between">' +
+            '<span>' + (st.photos.length > 0 ? '※1枚目が代表写真になります' : '写真は最大10枚まで選べます') + '</span>' +
+            '<span>' + st.photos.length + ' / 10枚</span>' +
+          '</div>';
+
+        return photosSection +
           '<label class="field"><span>日付</span><input type="date" data-bind="date" value="' + esc(st.date) + '"></label>' +
           '<label class="field"><span>ひとこと(写真だけでもOK)</span><textarea data-bind="body" maxlength="2000" rows="4" placeholder="例: はじめて寝返りができた!">' + esc(st.body) + '</textarea></label>' +
           '<div class="error-text" id="sheet-err"></div>' +
           '<button class="btn primary block" data-act="save">残す</button>';
       }
+
       mountSheet('思い出を残す', '', st, renderNew, (re) => ({
         async change(el) {
-          if (el.dataset.act !== 'pickphoto' || !el.files || !el.files[0]) return;
+          if (el.dataset.act !== 'pickphoto' || !el.files || !el.files.length) return;
           setErr('');
-          try {
-            const blob = await BA.resizeImage(el.files[0], 1600, 0.82);
-            if (blob.size > 4 * 1024 * 1024) throw new Error('写真が大きすぎます。別の写真をお試しください');
-            let thumbBlob = null;
+          const files = Array.from(el.files);
+          const remainingSlots = 10 - st.photos.length;
+          if (remainingSlots <= 0) {
+            setErr('写真は最大10枚までです');
+            return;
+          }
+          if (files.length > remainingSlots) {
+            setErr('一度に添付できる写真は最大10枚のため、先頭' + remainingSlots + '枚を追加しました');
+          }
+          const toProcess = files.slice(0, remainingSlots);
+          for (const file of toProcess) {
             try {
-              thumbBlob = await BA.resizeImage(el.files[0], 320, 0.80);
-            } catch (te) { /* noop */ }
-            revoke();
-            st.blob = blob; st.thumbBlob = thumbBlob; st.preview = URL.createObjectURL(blob);
+              const blob = await BA.resizeImage(file, 1600, 0.82);
+              if (blob.size > 4 * 1024 * 1024) continue;
+              let thumbBlob = null;
+              try { thumbBlob = await BA.resizeImage(file, 320, 0.80); } catch (e) { /* noop */ }
+              st.photos.push({
+                blob,
+                thumbBlob,
+                preview: URL.createObjectURL(blob),
+                photoId: null
+              });
+            } catch (e) {
+              setErr(e.message);
+            }
+          }
+          re();
+        },
+        delnewphoto(el) {
+          const idx = parseInt(el.dataset.idx, 10);
+          if (st.photos[idx]) {
+            if (st.photos[idx].preview) URL.revokeObjectURL(st.photos[idx].preview);
+            st.photos.splice(idx, 1);
             re();
-          } catch (e) { setErr(e.message); }
+          }
+        },
+        movenewphoto(el) {
+          const idx = parseInt(el.dataset.idx, 10);
+          const dir = parseInt(el.dataset.dir, 10);
+          const target = idx + dir;
+          if (target >= 0 && target < st.photos.length) {
+            const item = st.photos.splice(idx, 1)[0];
+            st.photos.splice(target, 0, item);
+            re();
+          }
         },
         save(el) {
           guard(el, async () => {
             setErr('');
             const text = (st.body || '').trim();
-            if (!text && !st.blob) throw new Error('写真かひとことを入力してください');
-            let photoId = null;
-            if (st.blob) {
-              photoId = await BA.uploadPhoto(st.blob);
-              if (st.thumbBlob) await BA.uploadPhotoThumb(photoId, st.thumbBlob);
-            }
+            if (!text && st.photos.length === 0) throw new Error('写真かひとことを入力してください');
+            const uploadedPhotoIds = [];
             try {
-              await BA.api('POST', '/children/' + BA.child().id + '/diary', { entry_date: st.date, body: text, photo_id: photoId });
+              for (const p of st.photos) {
+                if (!p.photoId) {
+                  p.photoId = await BA.uploadPhoto(p.blob);
+                  if (p.thumbBlob) await BA.uploadPhotoThumb(p.photoId, p.thumbBlob);
+                }
+                uploadedPhotoIds.push(p.photoId);
+              }
+              await BA.api('POST', '/children/' + BA.child().id + '/diary', {
+                entry_date: st.date,
+                body: text,
+                photo_ids: uploadedPhotoIds
+              });
             } catch (e) {
-              if (photoId) BA.api('DELETE', '/photos/' + photoId).catch(() => {});
+              for (const pid of uploadedPhotoIds) {
+                BA.api('DELETE', '/photos/' + pid).catch(() => {});
+              }
               throw e;
             }
             revoke();
@@ -275,19 +369,57 @@
     const isViewer = BA.isViewer();
     const c = BA.child();
     const who = BA.memberName(entry.member_id);
+    const initialPhotos = (entry.photos && entry.photos.length) ? entry.photos.slice() : (entry.photo_id ? [entry.photo_id] : []);
+    const initialPhotoIdx = (prefill && prefill.initialPhotoIdx !== undefined && prefill.initialPhotoIdx < initialPhotos.length) ? prefill.initialPhotoIdx : 0;
+
     const st = {
       mode: 'view',
       date: entry.entry_date,
       body: entry.body || '',
       comments: null,
       loadingComments: true,
-      newComment: ''
+      newComment: '',
+      activePhotoIdx: initialPhotoIdx,
+      editPhotos: []
     };
+
+    function revokeEditPreviews() {
+      st.editPhotos.forEach((p) => { if (p.preview) URL.revokeObjectURL(p.preview); });
+    }
 
     function render() {
       if (st.mode === 'edit') {
-        const photo = entry.photo_id ? '<img class="photo-full" data-photo="' + entry.photo_id + '" alt="思い出の写真">' : '';
-        return photo +
+        const photoItems = st.editPhotos.map((p, idx) => {
+          const imgHtml = p.preview
+            ? '<img class="diary-photo-thumb" src="' + p.preview + '" alt="写真プレビュー">'
+            : '<img class="diary-photo-thumb" data-photo="' + p.photoId + '" data-thumb="1" alt="写真プレビュー">';
+          return '<div class="diary-photo-thumb-wrap">' +
+            imgHtml +
+            '<button type="button" class="diary-photo-del" data-act="deleditphoto" data-idx="' + idx + '" title="削除" aria-label="写真を削除"><i class="fas fa-times"></i></button>' +
+            (st.editPhotos.length > 1 ? '<div class="diary-photo-order">' +
+              (idx > 0 ? '<button type="button" class="diary-photo-move" data-act="moveeditphoto" data-idx="' + idx + '" data-dir="-1" title="前へ" aria-label="前へ"><i class="fas fa-chevron-left"></i></button>' : '<span></span>') +
+              '<span>' + (idx + 1) + '</span>' +
+              (idx < st.editPhotos.length - 1 ? '<button type="button" class="diary-photo-move" data-act="moveeditphoto" data-idx="' + idx + '" data-dir="1" title="次へ" aria-label="次へ"><i class="fas fa-chevron-right"></i></button>' : '<span></span>') +
+            '</div>' : '') +
+          '</div>';
+        }).join('');
+
+        const addBtn = st.editPhotos.length < 10
+          ? '<label class="diary-photo-add">' +
+              '<i class="fas fa-camera" style="font-size:18px"></i>' +
+              '<span>' + (st.editPhotos.length === 0 ? '写真を選ぶ' : '写真を追加') + '</span>' +
+              '<input type="file" accept="image/*" multiple data-act="pickeditphoto" aria-label="写真を追加">' +
+            '</label>'
+          : '';
+
+        const photosSection =
+          '<div class="diary-photo-strip">' + photoItems + addBtn + '</div>' +
+          '<div class="muted" style="font-size:12px;margin:2px 0 12px;display:flex;justify-content:space-between">' +
+            '<span>' + (st.editPhotos.length > 0 ? '※1枚目が代表写真になります' : '写真は最大10枚まで選べます') + '</span>' +
+            '<span>' + st.editPhotos.length + ' / 10枚</span>' +
+          '</div>';
+
+        return photosSection +
           '<label class="field"><span>日付</span><input type="date" data-bind="date" value="' + esc(st.date) + '"></label>' +
           '<label class="field"><span>ひとこと</span><textarea data-bind="body" maxlength="2000" rows="4" placeholder="例: はじめて寝返りができた!">' + esc(st.body) + '</textarea></label>' +
           '<div class="error-text" id="sheet-err"></div>' +
@@ -299,7 +431,35 @@
       }
 
       // 詳細・コメント表示
-      const photoHtml = entry.photo_id ? '<img class="photo-full" data-photo="' + entry.photo_id + '" alt="思い出の写真">' : '';
+      const curPhotos = (entry.photos && entry.photos.length) ? entry.photos : (entry.photo_id ? [entry.photo_id] : []);
+      let photoHtml = '';
+      if (curPhotos.length > 0) {
+        if (st.activePhotoIdx >= curPhotos.length) st.activePhotoIdx = 0;
+        const activePid = curPhotos[st.activePhotoIdx];
+        const prevBtn = curPhotos.length > 1
+          ? '<button class="diary-carousel-nav prev" data-act="prevphoto" aria-label="前の写真"><i class="fas fa-chevron-left"></i></button>'
+          : '';
+        const nextBtn = curPhotos.length > 1
+          ? '<button class="diary-carousel-nav next" data-act="nextphoto" aria-label="次の写真"><i class="fas fa-chevron-right"></i></button>'
+          : '';
+        const badge = curPhotos.length > 1
+          ? '<span class="diary-carousel-badge">' + (st.activePhotoIdx + 1) + ' / ' + curPhotos.length + '</span>'
+          : '';
+        const dots = curPhotos.length > 1
+          ? '<div class="diary-carousel-dots">' +
+              curPhotos.map((_, i) => '<button class="diary-carousel-dot' + (i === st.activePhotoIdx ? ' active' : '') + '" data-act="selphoto" data-idx="' + i + '" aria-label="写真' + (i + 1) + '"></button>').join('') +
+            '</div>'
+          : '';
+
+        photoHtml = '<div class="diary-carousel-wrap">' +
+          '<div class="diary-carousel">' +
+            '<img class="photo-full diary-carousel-img" data-photo="' + activePid + '" alt="思い出の写真 (' + (st.activePhotoIdx + 1) + '/' + curPhotos.length + ')">' +
+            prevBtn + nextBtn + badge +
+          '</div>' +
+          dots +
+          '</div>';
+      }
+
       const headerHtml =
         '<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px">' +
           '<div style="font-size:15px;font-weight:700">' + esc(st.date.replace(/-/g, '/')) + ' <span class="badge">' + esc(ageAt(c.birthday, st.date)) + '</span></div>' +
@@ -354,24 +514,109 @@
       startedit() {
         st.mode = 'edit';
         setErr('');
+        const curPhotos = (entry.photos && entry.photos.length) ? entry.photos : (entry.photo_id ? [entry.photo_id] : []);
+        st.editPhotos = curPhotos.map((pid) => ({ photoId: pid, preview: null }));
         reRender();
       },
       canceledit() {
         st.mode = 'view';
         st.date = entry.entry_date;
         st.body = entry.body || '';
+        revokeEditPreviews();
         setErr('');
         reRender();
+      },
+      prevphoto() {
+        const curPhotos = (entry.photos && entry.photos.length) ? entry.photos : (entry.photo_id ? [entry.photo_id] : []);
+        if (curPhotos.length <= 1) return;
+        st.activePhotoIdx = (st.activePhotoIdx - 1 + curPhotos.length) % curPhotos.length;
+        reRender();
+      },
+      nextphoto() {
+        const curPhotos = (entry.photos && entry.photos.length) ? entry.photos : (entry.photo_id ? [entry.photo_id] : []);
+        if (curPhotos.length <= 1) return;
+        st.activePhotoIdx = (st.activePhotoIdx + 1) % curPhotos.length;
+        reRender();
+      },
+      selphoto(el) {
+        const idx = parseInt(el.dataset.idx, 10);
+        st.activePhotoIdx = idx;
+        reRender();
+      },
+      async change(el) {
+        if (el.dataset.act !== 'pickeditphoto' || !el.files || !el.files.length) return;
+        setErr('');
+        const files = Array.from(el.files);
+        const remainingSlots = 10 - st.editPhotos.length;
+        if (remainingSlots <= 0) {
+          setErr('写真は最大10枚までです');
+          return;
+        }
+        if (files.length > remainingSlots) {
+          setErr('一度に添付できる写真は最大10枚のため、先頭' + remainingSlots + '枚を追加しました');
+        }
+        const toProcess = files.slice(0, remainingSlots);
+        for (const file of toProcess) {
+          try {
+            const blob = await BA.resizeImage(file, 1600, 0.82);
+            if (blob.size > 4 * 1024 * 1024) continue;
+            let thumbBlob = null;
+            try { thumbBlob = await BA.resizeImage(file, 320, 0.80); } catch (e) { /* noop */ }
+            st.editPhotos.push({
+              blob,
+              thumbBlob,
+              preview: URL.createObjectURL(blob),
+              photoId: null
+            });
+          } catch (e) {
+            setErr(e.message);
+          }
+        }
+        reRender();
+      },
+      deleditphoto(el) {
+        const idx = parseInt(el.dataset.idx, 10);
+        if (st.editPhotos[idx]) {
+          if (st.editPhotos[idx].preview) URL.revokeObjectURL(st.editPhotos[idx].preview);
+          st.editPhotos.splice(idx, 1);
+          reRender();
+        }
+      },
+      moveeditphoto(el) {
+        const idx = parseInt(el.dataset.idx, 10);
+        const dir = parseInt(el.dataset.dir, 10);
+        const target = idx + dir;
+        if (target >= 0 && target < st.editPhotos.length) {
+          const item = st.editPhotos.splice(idx, 1)[0];
+          st.editPhotos.splice(target, 0, item);
+          reRender();
+        }
       },
       save(el) {
         guard(el, async () => {
           setErr('');
           const text = (st.body || '').trim();
-          if (!text && !entry.photo_id) throw new Error('写真かひとことを入力してください');
-          await BA.api('PUT', '/diary/' + entry.id, { entry_date: st.date, body: text });
+          if (!text && st.editPhotos.length === 0) throw new Error('写真かひとことを入力してください');
+          const uploadedPhotoIds = [];
+          for (const p of st.editPhotos) {
+            if (!p.photoId) {
+              p.photoId = await BA.uploadPhoto(p.blob);
+              if (p.thumbBlob) await BA.uploadPhotoThumb(p.photoId, p.thumbBlob);
+            }
+            uploadedPhotoIds.push(p.photoId);
+          }
+          await BA.api('PUT', '/diary/' + entry.id, {
+            entry_date: st.date,
+            body: text,
+            photo_ids: uploadedPhotoIds
+          });
+          revokeEditPreviews();
           entry.entry_date = st.date;
           entry.body = text;
+          entry.photos = uploadedPhotoIds;
+          entry.photo_id = uploadedPhotoIds[0] || null;
           st.mode = 'view';
+          st.activePhotoIdx = 0;
           reRender();
           BA.toast('保存しました');
           await BA.refresh();

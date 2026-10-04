@@ -256,16 +256,44 @@ details.fold > summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
 .badge.severe { background: color-mix(in srgb, var(--danger) 18%, var(--card)); color: var(--danger); }
 
 .diary-card { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; padding: 0; }
-.diary-card img, .diary-card .photo-missing { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--line); }
+.diary-card-photo-wrap { position: relative; width: 100%; aspect-ratio: 4 / 3; background: var(--line); }
+.diary-card-photo-wrap img, .diary-card-photo-wrap .photo-missing { display: block; width: 100%; height: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.diary-card-count { position: absolute; top: 8px; right: 8px; font-size: 11px; font-weight: 600; background: rgba(0, 0, 0, 0.65); color: #fff; padding: 2px 7px; border-radius: 6px; backdrop-filter: blur(2px); display: flex; align-items: center; gap: 4px; pointer-events: none; }
 img[data-photo]:not([src]) { visibility: hidden; }
 .diary-body { display: block; padding: 12px 14px 14px; }
 .diary-meta { font-size: 12.5px; color: var(--sub); display: flex; gap: 8px; align-items: center; }
 .diary-text { display: block; margin-top: 6px; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
 .photo-missing { display: grid; place-items: center; color: var(--sub); font-size: 13px; min-height: 120px; }
-.photo-full { width: 100%; max-height: 50vh; object-fit: contain; border-radius: 12px; background: var(--line); margin-bottom: 14px; display: block; }
+.photo-full { width: 100%; max-height: 50vh; object-fit: contain; border-radius: 12px; background: var(--line); display: block; }
 .photo-pick { position: relative; overflow: hidden; }
 .photo-pick input[type='file'] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .photo-preview { width: 100%; max-height: 40vh; object-fit: contain; border-radius: 12px; background: var(--line); margin-top: 10px; display: block; }
+
+/* ---------- 複数写真プレビューストリップ (投稿・編集) ---------- */
+.diary-photo-strip { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; margin-bottom: 6px; -webkit-overflow-scrolling: touch; }
+.diary-photo-thumb-wrap { position: relative; width: 80px; height: 80px; flex-shrink: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--line); }
+.diary-photo-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.diary-photo-del { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0, 0, 0, 0.65); color: #fff; border: none; font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.diary-photo-del:hover { background: var(--danger); }
+.diary-photo-order { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 10.5px; display: flex; align-items: center; justify-content: space-between; padding: 1px 3px; }
+.diary-photo-move { background: none; border: none; color: #fff; font-size: 9px; cursor: pointer; padding: 1px 3px; line-height: 1; opacity: 0.85; }
+.diary-photo-move:hover { opacity: 1; }
+.diary-photo-add { position: relative; width: 80px; height: 80px; flex-shrink: 0; border-radius: 10px; border: 2px dashed var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--sub); font-size: 11px; cursor: pointer; background: var(--bg); overflow: hidden; }
+.diary-photo-add input[type='file'] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.diary-photo-add:hover { border-color: var(--primary); color: var(--primary); }
+
+/* ---------- カルーセル表示 (詳細モーダル) ---------- */
+.diary-carousel-wrap { position: relative; width: 100%; margin-bottom: 12px; touch-action: pan-y; }
+.diary-carousel { width: 100%; display: flex; align-items: center; justify-content: center; min-height: 180px; background: var(--line); border-radius: 12px; overflow: hidden; position: relative; }
+.diary-carousel-img { width: 100%; max-height: 48vh; object-fit: contain; }
+.diary-carousel-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; background: rgba(0, 0, 0, 0.55); color: #fff; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; z-index: 2; backdrop-filter: blur(2px); transition: background 0.15s; }
+.diary-carousel-nav:hover { background: rgba(0, 0, 0, 0.8); }
+.diary-carousel-nav.prev { left: 8px; }
+.diary-carousel-nav.next { right: 8px; }
+.diary-carousel-badge { position: absolute; top: 8px; right: 8px; font-size: 11.5px; font-weight: 600; background: rgba(0, 0, 0, 0.65); color: #fff; padding: 2px 8px; border-radius: 10px; backdrop-filter: blur(2px); pointer-events: none; z-index: 2; }
+.diary-carousel-dots { display: flex; gap: 6px; justify-content: center; align-items: center; margin-top: 8px; }
+.diary-carousel-dot { width: 7px; height: 7px; border-radius: 50%; border: none; background: var(--line); padding: 0; cursor: pointer; transition: all 0.2s; }
+.diary-carousel-dot.active { background: var(--primary); width: 18px; border-radius: 4px; }
 
 /* ---------- 思い出ツールバー・グリッド表示 ---------- */
 .diary-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
@@ -278,6 +306,7 @@ img[data-photo]:not([src]) { visibility: hidden; }
 .diary-grid-item img, .diary-grid-item .photo-missing { width: 100%; height: 100%; object-fit: cover; display: block; aspect-ratio: 1 / 1; }
 .diary-grid-date { position: absolute; bottom: 4px; left: 4px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.6); color: #fff; padding: 1px 5px; border-radius: 4px; backdrop-filter: blur(2px); pointer-events: none; }
 .diary-grid-comments { position: absolute; top: 4px; right: 4px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.6); color: #fff; padding: 1px 5px; border-radius: 4px; backdrop-filter: blur(2px); pointer-events: none; }
+.diary-grid-multi { position: absolute; top: 4px; left: 4px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.6); color: #fff; padding: 1px 5px; border-radius: 4px; backdrop-filter: blur(2px); pointer-events: none; }
 
 /* ---------- 思い出コメント ---------- */
 .diary-comments { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
