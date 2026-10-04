@@ -118,10 +118,14 @@
     const header = V.header();
     const cards = list.map((d) => {
       const who = BA.memberName(d.member_id);
+      const commentBadge = d.comment_count
+        ? '<span class="badge" style="margin-left:auto"><i class="fas fa-comment"></i> ' + d.comment_count + '</span>'
+        : '';
       return '<button class="diary-card" data-act="editdiary" data-id="' + d.id + '">' +
         (d.photo_id ? '<img data-photo="' + d.photo_id + '" alt="思い出の写真">' : '') +
         '<span class="diary-body"><span class="diary-meta"><span>' + esc(d.entry_date.replace(/-/g, '/')) + '</span><span class="badge">' + esc(ageAt(c.birthday, d.entry_date)) + '</span>' +
-        (who ? '<span>' + esc(who) + '</span>' : '') + '</span>' +
+        (who ? '<span>' + esc(who) + '</span>' : '') +
+        commentBadge + '</span>' +
         (d.body ? '<span class="diary-text">' + esc(d.body) + '</span>' : '') + '</span></button>';
     }).join('');
     return header + '<main id="view">' +
@@ -133,64 +137,37 @@
   };
 
   BA.openDiary = function (entry) {
-    if (BA.isViewer()) {
-      if (!entry) return;
-      const c = BA.child();
-      const who = BA.memberName(entry.member_id);
-      function renderView() {
-        return (entry.photo_id ? '<img class="photo-full" data-photo="' + entry.photo_id + '" alt="思い出の写真">' : '') +
-          '<div style="margin:10px 0 6px;font-size:15px;font-weight:700">' + esc(entry.entry_date.replace(/-/g, '/')) +
-          ' <span class="badge">' + esc(ageAt(c.birthday, entry.entry_date)) + '</span></div>' +
-          (entry.body ? '<p style="margin:0 0 10px;white-space:pre-wrap;line-height:1.6">' + esc(entry.body) + '</p>' : '') +
-          (who ? '<p class="muted" style="font-size:12px;margin:0 0 14px"><i class="fas fa-user"></i> 記録した人: ' + esc(who) + '</p>' : '') +
-          '<button class="btn block" data-act="close"><i class="fas fa-xmark"></i>閉じる</button>';
-      }
-      BA.openSheet('思い出', '', renderView(), {
-        click(act) { if (act === 'close') BA.closeSheet(); },
-        input() {}
-      });
-      return;
-    }
-    const edit = !!entry;
-    const st = { date: entry ? entry.entry_date : BA.ymd(Date.now()), body: entry ? entry.body || '' : '', blob: null, preview: null };
-    const revoke = () => { if (st.preview) { URL.revokeObjectURL(st.preview); st.preview = null; } };
-    function render() {
-      let photo = '';
-      if (edit) {
-        photo = entry.photo_id ? '<img class="photo-full" data-photo="' + entry.photo_id + '" alt="思い出の写真">' : '';
-      } else {
-        photo = '<label class="btn block photo-pick"><i class="fas fa-camera"></i>' + (st.blob ? '写真を選びなおす' : '写真を選ぶ・撮影する') +
+    if (!entry) {
+      if (BA.isViewer()) return;
+      const st = { date: BA.ymd(Date.now()), body: '', blob: null, preview: null };
+      const revoke = () => { if (st.preview) { URL.revokeObjectURL(st.preview); st.preview = null; } };
+      function renderNew() {
+        const photo = '<label class="btn block photo-pick"><i class="fas fa-camera"></i>' + (st.blob ? '写真を選びなおす' : '写真を選ぶ・撮影する') +
           '<input type="file" accept="image/*" data-act="pickphoto" aria-label="写真を選ぶ"></label>' +
           (st.preview ? '<img class="photo-preview" src="' + st.preview + '" alt="選択した写真のプレビュー">' : '') +
           '<div style="height:14px"></div>';
+        return photo +
+          '<label class="field"><span>日付</span><input type="date" data-bind="date" value="' + esc(st.date) + '"></label>' +
+          '<label class="field"><span>ひとこと(写真だけでもOK)</span><textarea data-bind="body" maxlength="2000" rows="4" placeholder="例: はじめて寝返りができた!">' + esc(st.body) + '</textarea></label>' +
+          '<div class="error-text" id="sheet-err"></div>' +
+          '<button class="btn primary block" data-act="save">残す</button>';
       }
-      return photo +
-        '<label class="field"><span>日付</span><input type="date" data-bind="date" value="' + esc(st.date) + '"></label>' +
-        '<label class="field"><span>ひとこと' + (edit ? '' : '(写真だけでもOK)') + '</span><textarea data-bind="body" maxlength="2000" rows="4" placeholder="例: はじめて寝返りができた!">' + esc(st.body) + '</textarea></label>' +
-        '<div class="error-text" id="sheet-err"></div>' +
-        (edit ? '<div class="btn-row"><button class="btn danger" data-act="del"><i class="fas fa-trash"></i>削除</button><button class="btn primary" data-act="save">保存</button></div>'
-          : '<button class="btn primary block" data-act="save">残す</button>');
-    }
-    mountSheet(edit ? '思い出' : '思い出を残す', '', st, render, (re) => ({
-      async change(el) {
-        if (el.dataset.act !== 'pickphoto' || !el.files || !el.files[0]) return;
-        setErr('');
-        try {
-          const blob = await BA.resizeImage(el.files[0], 1600, 0.82);
-          if (blob.size > 4 * 1024 * 1024) throw new Error('写真が大きすぎます。別の写真をお試しください');
-          revoke();
-          st.blob = blob; st.preview = URL.createObjectURL(blob);
-          re();
-        } catch (e) { setErr(e.message); }
-      },
-      save(el) {
-        guard(el, async () => {
+      mountSheet('思い出を残す', '', st, renderNew, (re) => ({
+        async change(el) {
+          if (el.dataset.act !== 'pickphoto' || !el.files || !el.files[0]) return;
           setErr('');
-          const text = (st.body || '').trim();
-          if (edit) {
-            if (!text && !entry.photo_id) throw new Error('写真かひとことを入力してください');
-            await BA.api('PUT', '/diary/' + entry.id, { entry_date: st.date, body: text });
-          } else {
+          try {
+            const blob = await BA.resizeImage(el.files[0], 1600, 0.82);
+            if (blob.size > 4 * 1024 * 1024) throw new Error('写真が大きすぎます。別の写真をお試しください');
+            revoke();
+            st.blob = blob; st.preview = URL.createObjectURL(blob);
+            re();
+          } catch (e) { setErr(e.message); }
+        },
+        save(el) {
+          guard(el, async () => {
+            setErr('');
+            const text = (st.body || '').trim();
             if (!text && !st.blob) throw new Error('写真かひとことを入力してください');
             let photoId = null;
             if (st.blob) photoId = await BA.uploadPhoto(st.blob);
@@ -200,10 +177,119 @@
               if (photoId) BA.api('DELETE', '/photos/' + photoId).catch(() => {});
               throw e;
             }
-          }
-          revoke();
-          BA.closeSheet();
-          BA.toast(edit ? '保存しました' : '思い出を残しました');
+            revoke();
+            BA.closeSheet();
+            BA.toast('思い出を残しました');
+            await BA.refresh();
+          });
+        }
+      }));
+      return;
+    }
+
+    // 既存の日記の閲覧・コメント・編集(閲覧専用ユーザーもコメント可能)
+    const isViewer = BA.isViewer();
+    const c = BA.child();
+    const who = BA.memberName(entry.member_id);
+    const st = {
+      mode: 'view',
+      date: entry.entry_date,
+      body: entry.body || '',
+      comments: null,
+      loadingComments: true,
+      newComment: ''
+    };
+
+    function render() {
+      if (st.mode === 'edit') {
+        const photo = entry.photo_id ? '<img class="photo-full" data-photo="' + entry.photo_id + '" alt="思い出の写真">' : '';
+        return photo +
+          '<label class="field"><span>日付</span><input type="date" data-bind="date" value="' + esc(st.date) + '"></label>' +
+          '<label class="field"><span>ひとこと</span><textarea data-bind="body" maxlength="2000" rows="4" placeholder="例: はじめて寝返りができた!">' + esc(st.body) + '</textarea></label>' +
+          '<div class="error-text" id="sheet-err"></div>' +
+          '<div class="btn-row" style="margin-top:12px">' +
+            '<button class="btn danger" data-act="del"><i class="fas fa-trash"></i>削除</button>' +
+            '<button class="btn" data-act="canceledit">キャンセル</button>' +
+            '<button class="btn primary" data-act="save">保存</button>' +
+          '</div>';
+      }
+
+      // 詳細・コメント表示
+      const photoHtml = entry.photo_id ? '<img class="photo-full" data-photo="' + entry.photo_id + '" alt="思い出の写真">' : '';
+      const headerHtml =
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px">' +
+          '<div style="font-size:15px;font-weight:700">' + esc(st.date.replace(/-/g, '/')) + ' <span class="badge">' + esc(ageAt(c.birthday, st.date)) + '</span></div>' +
+          (!isViewer ? '<button class="btn soft" data-act="startedit" style="font-size:12px;padding:4px 10px"><i class="fas fa-pen"></i> 編集</button>' : '') +
+        '</div>';
+      const bodyHtml = st.body ? '<p style="margin:0 0 10px;white-space:pre-wrap;line-height:1.6">' + esc(st.body) + '</p>' : '';
+      const whoHtml = who ? '<p class="muted" style="font-size:12px;margin:0 0 14px"><i class="fas fa-user"></i> 記録した人: ' + esc(who) + '</p>' : '';
+
+      const countStr = st.comments ? ' (' + st.comments.length + ')' : '';
+      let commentListHtml = '';
+      if (st.loadingComments) {
+        commentListHtml = '<div class="muted" style="font-size:13px;padding:12px 0;text-align:center"><i class="fas fa-spinner fa-spin"></i> コメントを読み込み中...</div>';
+      } else if (!st.comments || st.comments.length === 0) {
+        commentListHtml = '<div class="muted" style="font-size:13px;padding:8px 0 12px">まだコメントはありません。</div>';
+      } else {
+        commentListHtml = '<div class="diary-comments-list">' +
+          st.comments.map((cm) => {
+            const author = BA.memberName(cm.member_id) || '家族メンバー';
+            const isMine = cm.member_id === BA.state.me;
+            const canDel = isMine || !isViewer;
+            const ago = BA.fmtAgo(cm.created_at);
+            return '<div class="diary-comment-item">' +
+              '<div class="diary-comment-head">' +
+                '<span class="diary-comment-author">' + esc(author) + '</span>' +
+                '<span class="diary-comment-meta">' +
+                  '<span>' + esc(ago) + '</span>' +
+                  (canDel ? '<button class="diary-comment-del" data-act="delcomment" data-cid="' + cm.id + '" title="削除" aria-label="コメントを削除"><i class="fas fa-trash"></i></button>' : '') +
+                '</span>' +
+              '</div>' +
+              '<div class="diary-comment-body">' + esc(cm.comment) + '</div>' +
+            '</div>';
+          }).join('') +
+          '</div>';
+      }
+
+      const commentFormHtml =
+        '<div class="diary-comment-form">' +
+          '<textarea data-bind="newComment" maxlength="1000" rows="1" placeholder="コメントを書く...">' + esc(st.newComment) + '</textarea>' +
+          '<button class="btn primary" data-act="sendcomment" aria-label="送信" style="padding:9px 15px"><i class="fas fa-paper-plane"></i></button>' +
+        '</div>';
+
+      return photoHtml + headerHtml + bodyHtml + whoHtml +
+        '<div class="diary-comments">' +
+          '<div class="diary-comments-title"><i class="fas fa-comments" style="color:var(--primary)"></i> コメント' + countStr + '</div>' +
+          commentListHtml +
+          commentFormHtml +
+          '<div class="error-text" id="sheet-err" style="margin-top:6px"></div>' +
+        '</div>';
+    }
+
+    const re = mountSheet('思い出', '', st, render, (reRender) => ({
+      startedit() {
+        st.mode = 'edit';
+        setErr('');
+        reRender();
+      },
+      canceledit() {
+        st.mode = 'view';
+        st.date = entry.entry_date;
+        st.body = entry.body || '';
+        setErr('');
+        reRender();
+      },
+      save(el) {
+        guard(el, async () => {
+          setErr('');
+          const text = (st.body || '').trim();
+          if (!text && !entry.photo_id) throw new Error('写真かひとことを入力してください');
+          await BA.api('PUT', '/diary/' + entry.id, { entry_date: st.date, body: text });
+          entry.entry_date = st.date;
+          entry.body = text;
+          st.mode = 'view';
+          reRender();
+          BA.toast('保存しました');
           await BA.refresh();
         });
       },
@@ -215,8 +301,48 @@
           BA.toast('削除しました');
           await BA.refresh();
         });
+      },
+      sendcomment(el) {
+        guard(el, async () => {
+          setErr('');
+          const text = (st.newComment || '').trim();
+          if (!text) return;
+          const res = await BA.api('POST', '/diary/' + entry.id + '/comments', { comment: text });
+          if (!st.comments) st.comments = [];
+          st.comments.push(res.comment);
+          st.newComment = '';
+          entry.comment_count = (entry.comment_count || 0) + 1;
+          reRender();
+          BA.toast('コメントを投稿しました');
+        });
+      },
+      delcomment(el) {
+        const cid = el.dataset.cid;
+        if (!cid) return;
+        if (!confirm('このコメントを削除しますか?')) return;
+        guard(el, async () => {
+          setErr('');
+          await BA.api('DELETE', '/diary/comments/' + cid);
+          if (st.comments) st.comments = st.comments.filter((item) => item.id !== cid);
+          if (entry.comment_count && entry.comment_count > 0) entry.comment_count--;
+          reRender();
+          BA.toast('コメントを削除しました');
+        });
       }
     }));
+
+    // コメント一覧を非同期取得
+    BA.api('GET', '/diary/' + entry.id + '/comments')
+      .then((res) => {
+        st.comments = res.comments || [];
+        st.loadingComments = false;
+        re();
+      })
+      .catch(() => {
+        st.comments = [];
+        st.loadingComments = false;
+        re();
+      });
   };
 
   // =====================================================================

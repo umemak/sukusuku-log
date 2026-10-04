@@ -521,6 +521,7 @@ api.delete('/children/:id', async (c) => {
     db.prepare('DELETE FROM vaccinations WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM foods WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM subsidy_done WHERE child_id = ? AND family_id = ?').bind(id, fid),
+    db.prepare('DELETE FROM diary_comments WHERE family_id = ? AND diary_id IN (SELECT id FROM diary WHERE child_id = ?)').bind(fid, id),
     db.prepare('DELETE FROM diary WHERE child_id = ? AND family_id = ?').bind(id, fid),
     db.prepare('DELETE FROM children WHERE id = ? AND family_id = ?').bind(id, fid)
   ])
@@ -905,8 +906,10 @@ api.get('/children/:id/diary', async (c) => {
   const limit = Math.min(Math.max(num(c.req.query('limit')) ?? 100, 1), 300)
   const rs = await c.env.DB
     .prepare(
-      `SELECT id, member_id, entry_date, body, photo_id FROM diary
-       WHERE child_id = ? AND family_id = ? ORDER BY entry_date DESC, created_at DESC LIMIT ?`
+      `SELECT d.id, d.member_id, d.entry_date, d.body, d.photo_id,
+        (SELECT COUNT(*) FROM diary_comments c WHERE c.diary_id = d.id AND c.family_id = d.family_id) AS comment_count
+       FROM diary d
+       WHERE d.child_id = ? AND d.family_id = ? ORDER BY d.entry_date DESC, d.created_at DESC LIMIT ?`
     )
     .bind(childId, c.get('familyId'), limit)
     .all()
@@ -968,8 +971,93 @@ api.delete('/diary/:id', async (c) => {
     .bind(c.req.param('id'), c.get('familyId'))
     .first<{ photo_id: string | null }>()
   if (!row) return c.json({ error: 'not found' }, 404)
-  await c.env.DB.prepare('DELETE FROM diary WHERE id = ? AND family_id = ?').bind(c.req.param('id'), c.get('familyId')).run()
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM diary_comments WHERE diary_id = ? AND family_id = ?').bind(c.req.param('id'), c.get('familyId')),
+    c.env.DB.prepare('DELETE FROM diary WHERE id = ? AND family_id = ?').bind(c.req.param('id'), c.get('familyId'))
+  ])
   if (row.photo_id) await c.env.PHOTOS.delete(`${c.get('familyId')}/${row.photo_id}`)
+  return c.json({ ok: true })
+})
+
+// ---------- 写真・思い出日記へのコメント(閲覧専用ユーザーも投稿可能) ----------
+
+api.get('/diary/:id/comments', async (c) => {
+  const diaryId = c.req.param('id')
+  if (!ID_RE.test(diaryId)) return c.json({ error: 'not found' }, 404)
+  const fid = c.get('familyId')
+  const diary = await c.env.DB
+    .prepare('SELECT 1 FROM diary WHERE id = ? AND family_id = ?')
+    .bind(diaryId, fid)
+    .first()
+  if (!diary) return c.json({ error: 'not found' }, 404)
+
+  const rs = await c.env.DB
+    .prepare(
+      `SELECT id, diary_id, member_id, comment, created_at
+       FROM diary_comments
+       WHERE diary_id = ? AND family_id = ?
+       ORDER BY created_at ASC`
+    )
+    .bind(diaryId, fid)
+    .all()
+  return c.json({ comments: rs.results })
+})
+
+api.post('/diary/:id/comments', async (c) => {
+  const diaryId = c.req.param('id')
+  if (!ID_RE.test(diaryId)) return c.json({ error: 'not found' }, 404)
+  const fid = c.get('familyId')
+  const diary = await c.env.DB
+    .prepare('SELECT 1 FROM diary WHERE id = ? AND family_id = ?')
+    .bind(diaryId, fid)
+    .first()
+  if (!diary) return c.json({ error: 'not found' }, 404)
+
+  const body = await readJson(c)
+  const text = str(body.comment, 1000)
+  if (!text) return c.json({ error: 'コメントを入力してください' }, 400)
+
+  const id = uuid()
+  const t = now()
+  await c.env.DB
+    .prepare(
+      `INSERT INTO diary_comments (id, family_id, diary_id, member_id, comment, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .bind(id, fid, diaryId, c.get('memberId'), text, t)
+    .run()
+
+  return c.json({
+    comment: {
+      id,
+      diary_id: diaryId,
+      member_id: c.get('memberId'),
+      comment: text,
+      created_at: t
+    }
+  })
+})
+
+api.delete('/diary/comments/:id', async (c) => {
+  const commentId = c.req.param('id')
+  if (!ID_RE.test(commentId)) return c.json({ error: 'not found' }, 404)
+  const fid = c.get('familyId')
+  const row = await c.env.DB
+    .prepare('SELECT id, member_id FROM diary_comments WHERE id = ? AND family_id = ?')
+    .bind(commentId, fid)
+    .first<{ id: string; member_id: string }>()
+  if (!row) return c.json({ error: 'not found' }, 404)
+
+  const isMine = row.member_id === c.get('memberId')
+  const isEditor = c.get('role') === 'editor'
+  if (!isMine && !isEditor) {
+    return c.json({ error: '他のメンバーのコメントは削除できません' }, 403)
+  }
+
+  await c.env.DB
+    .prepare('DELETE FROM diary_comments WHERE id = ? AND family_id = ?')
+    .bind(commentId, fid)
+    .run()
   return c.json({ ok: true })
 })
 

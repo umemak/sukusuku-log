@@ -27,17 +27,17 @@
   - 予防接種: 生年月日から時期を自動計算、接種済みチェック(閲覧専用ユーザーは確認のみ)
   - 離乳食: 食べたものの記録、特定原材料8品目の経験状況、食後の様子(問題なし/軽い症状/強い症状と受診の目安)
   - **受診用まとめ**: 直近3/7/14日の授乳・睡眠・おむつ・体温・薬・成長(パーセンタイル付き)・接種・アレルギーを1枚に集約し、印刷 / PDF保存
-- **思い出タブ**: 写真(端末側で縮小したJPEG、R2に保存)とひとことの日記。月齢つき、編集・削除可(閲覧専用ユーザーは閲覧のみ)。写真は家族メンバーだけが認証付きで取得できる。
+- **思い出タブ**: 写真(端末側で縮小したJPEG、R2に保存)とひとことの日記。月齢つき、編集・削除可。家族メンバーで感想や返信コメントを付け合うことができ、閲覧専用ユーザーもコメントが可能。写真は家族メンバーだけが認証付きで取得できる。
 - **家族タブ**: 有効な招待コードの一覧・招待リンクのコピー/共有・招待の取り消し・新しい招待コードの発行(記録用 / 閲覧用)、メンバー一覧(権限バッジ・権限切り替え・**削除**)、複数の子ども(きょうだい)、テーマ切替、連携解除
 - **声・文章でまとめて記録(Gemini)**: ホームの「声・文章でまとめて記録」から、話しかける(最大30秒)か文章で入力 → AIが記録の候補に変換 → 確認・修正してから保存。例「さっきミルク120と、おしっこ。うんちはやわらかめ」。`GEMINI_API_KEY` を設定した環境でのみボタンが表示される(閲覧専用ユーザーには非表示)。1家族あたり1日40回まで(日本時間)。AIは記録の抽出だけを行い、診断や助言はしない。音声・文章はGoogle(Gemini API)に送信され、アプリ側には保存しない(有料枠のキー前提)。
 - 他端末の記録は20秒ごと、および画面を開き直したときに自動で反映される。
 
 ## Data Architecture
-- **Storage**: Cloudflare D1(SQLite)。`migrations/0001_initial_schema.sql`, `0002_diary_foods.sql`, `0006_member_role.sql`, `0007_invitations.sql`, `0008_email_verifications.sql`
+- **Storage**: Cloudflare D1(SQLite)。`migrations/0001_initial_schema.sql`, `0002_diary_foods.sql`, `0006_member_role.sql`, `0007_invitations.sql`, `0008_email_verifications.sql`, `0009_diary_comments.sql`
 - **Object storage**: Cloudflare R2(バケット `sukusuku-log-photos`、バインディング `PHOTOS`、キーは `<family_id>/<photo_id>`)
-- **Tables**: families / members(role: 'editor' | 'viewer') / children / logs / growth / vaccinations / foods / diary / ai_usage(AI利用回数) / member_tokens(追加端末の鍵) / invitations(ワンタイム招待コード) / email_verifications(メール認証コード)
+- **Tables**: families / members(role: 'editor' | 'viewer') / children / logs / growth / vaccinations / foods / diary / diary_comments(写真・日記へのコメント) / ai_usage(AI利用回数) / member_tokens(追加端末の鍵) / invitations(ワンタイム招待コード) / email_verifications(メール認証コード)
 - **WHO データ**: `public/static/who-lms.js`(Weight-for-age / Length(Height)-for-age / Head circumference-for-age の LMS 表、0〜5歳)
-- **認証**: 端末ごとのランダムトークン(localStorage)。DBにはSHA-256ハッシュのみ保存。全APIが家族IDで絞り込み、書き込みAPIは `editor` 権限を要求。
+- **認証**: 端末ごとのランダムトークン(localStorage)。DBにはSHA-256ハッシュのみ保存。全APIが家族IDで絞り込み、書き込みAPIは `editor` 権限を要求(日記コメント投稿は閲覧専用ユーザーも許可)。
 
 ## API(すべて `/api` 配下、`Authorization: Bearer <token>`)
 | メソッド | パス | 内容 |
@@ -60,6 +60,8 @@
 | GET/POST, DELETE | /children/:id/foods, /foods/:id | 離乳食・アレルギー記録(POST/DELETEはeditorのみ) |
 | POST, GET, DELETE | /photos, /photos/:id | 写真(JPEGのみ・4MBまで、POST/DELETEはeditorのみ) |
 | GET/POST, PUT/DELETE | /children/:id/diary, /diary/:id | 思い出日記(POST/PUT/DELETEはeditorのみ) |
+| GET/POST | /diary/:id/comments | 思い出日記のコメント一覧取得 / 投稿(閲覧専用ユーザーも投稿可能) |
+| DELETE | /diary/comments/:id | コメント削除(投稿者本人またはeditorのみ) |
 | GET, PUT/DELETE | /children/:id/vaccinations[/:key] | 接種記録(PUT/DELETEはeditorのみ) |
 | GET | /ai/status | AI機能の有効/無効と今日の残り回数 |
 | POST | /ai/parse?tz= | 音声または `{text}` → 記録候補 (editorのみ) |

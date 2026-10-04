@@ -267,6 +267,22 @@ img[data-photo]:not([src]) { visibility: hidden; }
 .photo-pick input[type='file'] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .photo-preview { width: 100%; max-height: 40vh; object-fit: contain; border-radius: 12px; background: var(--line); margin-top: 10px; display: block; }
 
+/* ---------- 思い出コメント ---------- */
+.diary-comments { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+.diary-comments-title { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; color: var(--text); }
+.diary-comments-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.diary-comment-item { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; font-size: 13.5px; }
+.diary-comment-head { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--sub); margin-bottom: 4px; }
+.diary-comment-meta { display: flex; align-items: center; gap: 8px; }
+.diary-comment-author { font-weight: 600; color: var(--text); }
+.diary-comment-body { white-space: pre-wrap; word-break: break-word; line-height: 1.5; color: var(--text); }
+.diary-comment-del { background: none; border: none; color: var(--sub); padding: 2px 5px; cursor: pointer; font-size: 12px; border-radius: 4px; }
+.diary-comment-del:hover { color: var(--danger); }
+.diary-comment-form { display: flex; gap: 8px; align-items: flex-end; }
+.diary-comment-form textarea { flex: 1; min-height: 40px; max-height: 120px; padding: 8px 12px; font-size: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); resize: none; line-height: 1.4; box-sizing: border-box; }
+.diary-comment-form button { flex-shrink: 0; }
+
+
 /* ---------- 受診用まとめ(画面表示と印刷) ---------- */
 #report-root { display: none; }
 #report-root.open { display: block; position: fixed; inset: 0; z-index: 80; background: #e9e6ea; overflow: auto; color: #222; }
