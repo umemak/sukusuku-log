@@ -912,6 +912,20 @@ const ID_RE = /^[0-9a-f-]{36}$/
 api.post('/photos', async (c) => {
   const denied = requireEditor(c)
   if (denied) return denied
+  const fid = c.get('familyId')
+
+  if (!checkRateLimit(`upload:${fid}`, 30, 60000)) {
+    return c.json({ error: '写真のアップロード頻度が高すぎます。少し待ってから再度お試しください' }, 429)
+  }
+
+  const count = await c.env.DB
+    .prepare('SELECT COUNT(*) AS n FROM diary_photos WHERE family_id = ?')
+    .bind(fid)
+    .first<{ n: number }>()
+  if ((count?.n ?? 0) >= 3000) {
+    return c.json({ error: '家族あたりの写真上限(3,000枚)に達しました。不要な古い写真を整理してください' }, 400)
+  }
+
   const len = Number(c.req.header('Content-Length') || 0)
   if (len > MAX_PHOTO_BYTES) return c.json({ error: '写真が大きすぎます(4MBまで)' }, 413)
   const buf = await c.req.arrayBuffer()
@@ -920,7 +934,7 @@ api.post('/photos', async (c) => {
   const b = new Uint8Array(buf, 0, 3)
   if (!(b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff)) return c.json({ error: 'JPEG形式の写真のみ登録できます' }, 400)
   const photoId = uuid()
-  await c.env.PHOTOS.put(`${c.get('familyId')}/${photoId}`, buf, { httpMetadata: { contentType: 'image/jpeg' } })
+  await c.env.PHOTOS.put(`${fid}/${photoId}`, buf, { httpMetadata: { contentType: 'image/jpeg' } })
   return c.json({ photo_id: photoId })
 })
 
