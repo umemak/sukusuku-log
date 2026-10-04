@@ -15,12 +15,18 @@ function encodeSubject(subject: string): string {
   return `=?utf-8?B?${b64}?=`
 }
 
+function cleanHeader(val: string): string {
+  return val.replace(/[\r\n]/g, '').trim()
+}
+
 function buildRawEmail(from: string, fromName: string, to: string, subject: string, body: string): string {
-  const encSubject = encodeSubject(subject)
-  const encFromName = encodeSubject(fromName)
+  const encSubject = encodeSubject(cleanHeader(subject))
+  const encFromName = encodeSubject(cleanHeader(fromName))
+  const cleanFrom = cleanHeader(from)
+  const cleanTo = cleanHeader(to)
   return [
-    `From: ${encFromName} <${from}>`,
-    `To: <${to}>`,
+    `From: ${encFromName} <${cleanFrom}>`,
+    `To: <${cleanTo}>`,
     `Subject: ${encSubject}`,
     `MIME-Version: 1.0`,
     `Content-Type: text/plain; charset=utf-8`,

@@ -122,6 +122,10 @@ async function uniqueInviteCode(db: D1Database): Promise<string> {
 
 // 家族新規作成のためのメール認証コード送信
 api.post('/auth/send-code', async (c) => {
+  const ip = getClientIp(c)
+  if (!checkRateLimit(`send_code:${ip}`, 5, 10 * 60 * 1000)) {
+    return c.json({ error: '送信回数が上限を超えました。しばらく待ってから再度お試しください' }, 429)
+  }
   const body = await readJson(c)
   const email = str(body.email, 100)?.toLowerCase()
   if (!email || !isValidEmail(email)) {
