@@ -56,6 +56,32 @@ const num = (v: unknown): number | null => {
 const isDate = (v: unknown): v is string =>
   typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v))
 
+type RateLimitEntry = { count: number; resetAt: number }
+const rateLimits = new Map<string, RateLimitEntry>()
+
+function checkRateLimit(key: string, maxAttempts: number, windowMs: number): boolean {
+  const t = now()
+  if (rateLimits.size > 1000) {
+    for (const [k, v] of rateLimits.entries()) {
+      if (v.resetAt <= t) rateLimits.delete(k)
+    }
+  }
+  const entry = rateLimits.get(key)
+  if (!entry || entry.resetAt <= t) {
+    rateLimits.set(key, { count: 1, resetAt: t + windowMs })
+    return true
+  }
+  if (entry.count >= maxAttempts) {
+    return false
+  }
+  entry.count++
+  return true
+}
+
+function getClientIp(c: Context): string {
+  return c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for')?.split(',')[0].trim() || '127.0.0.1'
+}
+
 async function readJson(c: Context): Promise<Record<string, unknown>> {
   try {
     const body = await c.req.json()
@@ -188,6 +214,10 @@ api.post('/families', async (c) => {
 
 // 招待コードの事前検証(認証不要)
 api.get('/invitations/check', async (c) => {
+  const ip = getClientIp(c)
+  if (!checkRateLimit(`inv_check:${ip}`, 30, 60000)) {
+    return c.json({ valid: false, error: '試行回数が上限を超えました。しばらく待ってから再度お試しください' }, 429)
+  }
   const code = str(c.req.query('code'), 20)?.toUpperCase().replace(/[^A-Z0-9]/g, '')
   if (!code) return c.json({ valid: false, error: 'コードが指定されていません' }, 400)
   const db = c.env.DB
@@ -198,6 +228,7 @@ api.get('/invitations/check', async (c) => {
     .first<{ code: string; role: 'editor' | 'viewer'; expires_at: number; used_at: number | null }>()
 
   if (!invite) {
+    await new Promise((r) => setTimeout(r, 400))
     return c.json({ valid: false, reason: 'not_found', error: '招待コードが見つかりません' }, 404)
   }
   if (invite.used_at != null) {
@@ -210,6 +241,10 @@ api.get('/invitations/check', async (c) => {
 })
 
 api.post('/join', async (c) => {
+  const ip = getClientIp(c)
+  if (!checkRateLimit(`join:${ip}`, 15, 60000)) {
+    return c.json({ error: '試行回数が上限を超えました。しばらく待ってから再度お試しください' }, 429)
+  }
   const body = await readJson(c)
   const memberName = str(body.memberName, 30)
   const code = str(body.code, 20)?.toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -226,6 +261,7 @@ api.post('/join', async (c) => {
     .first<{ code: string; family_id: string; role: 'editor' | 'viewer'; created_at: number; expires_at: number; used_at: number | null }>()
 
   if (!invite) {
+    await new Promise((r) => setTimeout(r, 400))
     // 既存の古い共通家族コードで参加しようとした場合への親切な案内
     const oldFamily = await db.prepare('SELECT id FROM families WHERE code = ?').bind(code).first<{ id: string }>()
     if (oldFamily) {
