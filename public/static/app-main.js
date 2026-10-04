@@ -12,7 +12,7 @@
   // ---------- データ取得 ----------
   BA.reloadMe = async function () {
     const r = await BA.api('GET', '/me');
-    st.me = r.me; st.family = r.family; st.members = r.members; st.children = r.children;
+    st.me = r.me; st.role = r.role; st.family = r.family; st.members = r.members; st.children = r.children;
     const ids = st.children.map((c) => c.id);
     if (!ids.includes(st.childId)) {
       st.childId = ids[0] || null;
@@ -59,7 +59,13 @@
   BA.render = function () {
     const root = $app();
     if (st.token && st.family) st.obMode = null;
-    if (!st.token || !st.family) { root.innerHTML = V.onboard(new URLSearchParams(location.search).get('code') || ''); return; }
+    if (!st.token || !st.family) {
+      const sp = new URLSearchParams(location.search);
+      const code = sp.get('code') || '';
+      const readonly = sp.get('readonly') === '1' || sp.get('role') === 'viewer';
+      root.innerHTML = V.onboard(code, readonly);
+      return;
+    }
     if (!BA.child()) { root.innerHTML = V.noChild(); return; }
     BA.destroyCharts();
     const scroll = window.scrollY;
@@ -120,7 +126,7 @@
     try {
       const r = kind === 'create'
         ? await BA.api('POST', '/families', { memberName: name })
-        : await BA.api('POST', '/join', { memberName: name, code });
+        : await BA.api('POST', '/join', { memberName: name, code, role: st.obRole || 'editor' });
       st.token = r.token;
       BA.ls.set('ba_token', r.token);
       if (location.search) history.replaceState(null, '', location.pathname);
@@ -133,7 +139,8 @@
         return;
       }
       await BA.refresh();
-      BA.toast(r.linked ? '「' + r.memberName + '」さんの端末として追加しました' : '家族に参加しました', { ms: r.linked ? 4000 : undefined });
+      const roleMsg = r.role === 'viewer' ? ' (閲覧のみ)' : '';
+      BA.toast(r.linked ? '「' + r.memberName + '」さんの端末として追加しました' : '家族に参加しました' + roleMsg, { ms: r.linked ? 4000 : undefined });
     } catch (e) {
       err.textContent = e.message;
     } finally { btn.disabled = false; }
@@ -169,24 +176,59 @@
       BA.toast('最初の画面に戻りました');
     },
     'ob-join': (el) => onboardSubmit('join', el),
-    addchild: () => BA.openChildForm(null),
-    editchild: (el) => BA.openChildForm(st.children.find((c) => c.id === el.dataset.id)),
+    'ob-role': (el) => {
+      st.obRole = el.dataset.role;
+      st.obRoleTouched = true;
+      BA.render();
+    },
+    addchild: () => {
+      if (BA.isViewer()) return;
+      BA.openChildForm(null);
+    },
+    editchild: (el) => {
+      if (BA.isViewer()) return;
+      BA.openChildForm(st.children.find((c) => c.id === el.dataset.id));
+    },
     switchchild: () => BA.openChildSwitcher(),
     refresh: () => BA.refresh(),
     tab: (el) => { st.tab = el.dataset.tab; if (st.tab === 'timeline') st.dayOffset = 0; window.scrollTo(0, 0); BA.refresh(); },
-    open: (el) => BA.openEntry(el.dataset.type),
+    open: (el) => {
+      if (BA.isViewer()) return;
+      BA.openEntry(el.dataset.type);
+    },
     quick: (el) => {
+      if (BA.isViewer()) return;
       const t = el.dataset.type;
       BA.quickRecord(t, t === 'poop' ? { kind: 'normal' } : null);
     },
-    sleep: () => BA.toggleSleep(),
-    more: () => BA.openTypePicker(),
-    voice: () => BA.openVoice(),
-    stoptimer: (el) => BA.stopTimer(el.dataset.id),
-    canceltimer: (el) => BA.cancelTimer(el.dataset.id),
+    sleep: () => {
+      if (BA.isViewer()) return;
+      BA.toggleSleep();
+    },
+    more: () => {
+      if (BA.isViewer()) return;
+      BA.openTypePicker();
+    },
+    voice: () => {
+      if (BA.isViewer()) return;
+      BA.openVoice();
+    },
+    stoptimer: (el) => {
+      if (BA.isViewer()) return;
+      BA.stopTimer(el.dataset.id);
+    },
+    canceltimer: (el) => {
+      if (BA.isViewer()) return;
+      BA.cancelTimer(el.dataset.id);
+    },
     editlog: (el) => {
       const l = (BA.data.logs || []).find((x) => x.id === el.dataset.id);
-      if (l) BA.openEntry(l.type, l);
+      if (!l) return;
+      if (BA.isViewer()) {
+        BA.openLogDetail(l);
+      } else {
+        BA.openEntry(l.type, l);
+      }
     },
     day: (el) => {
       const d = st.dayOffset + Number(el.dataset.d);
@@ -203,8 +245,12 @@
       });
     },
     gmetric: (el) => { st.growthMetric = el.dataset.m; BA.render(); },
-    addgrowth: () => BA.openGrowthForm(),
+    addgrowth: () => {
+      if (BA.isViewer()) return;
+      BA.openGrowthForm();
+    },
     delgrowth: async (el) => {
+      if (BA.isViewer()) return;
       if (!confirm('この成長記録を削除しますか?')) return;
       try { await BA.api('DELETE', '/growth/' + el.dataset.id); BA.toast('削除しました'); await BA.refresh(); } catch (e) { BA.errToast(e); }
     },
@@ -227,28 +273,77 @@
         catch (e) { BA.toast('共有できませんでした'); }
       }
     },
+    copyreadonlylink: async () => {
+      const url = location.origin + '/?code=' + st.family.code + '&readonly=1';
+      try {
+        await navigator.clipboard.writeText(url);
+        BA.toast('閲覧専用の参加リンクをコピーしました');
+      } catch (e) {
+        BA.toast('コピーできませんでした');
+      }
+    },
+    sharereadonly: async () => {
+      const url = location.origin + '/?code=' + st.family.code + '&readonly=1';
+      const text = '「すくすくログ」で育児記録・写真を見守り・閲覧できます。こちらのリンクから参加してください。\n家族コード: ' + st.family.code;
+      if (navigator.share) {
+        try { await navigator.share({ title: 'すくすくログ(閲覧用招待)', text, url }); } catch (e) { /* cancelled */ }
+      } else {
+        try {
+          await navigator.clipboard.writeText(text + '\n' + url);
+          BA.toast('閲覧用招待文をコピーしました');
+        } catch (e) {
+          BA.toast('共有できませんでした');
+        }
+      }
+    },
+    changerole: async (el) => {
+      if (BA.isViewer()) return;
+      const id = el.dataset.id;
+      const current = el.dataset.role || 'editor';
+      const next = current === 'viewer' ? 'editor' : 'viewer';
+      const nextLabel = next === 'viewer' ? '「閲覧のみ」' : '「記録・編集」';
+      const name = el.dataset.name || 'メンバー';
+      if (!confirm(name + ' さんの権限を ' + nextLabel + ' に変更しますか？')) return;
+      try {
+        await BA.api('PUT', '/members/' + id + '/role', { role: next });
+        BA.toast(name + ' さんの権限を変更しました');
+        await BA.reloadMe();
+        BA.render();
+      } catch (e) {
+        BA.errToast(e);
+      }
+    },
     rename: async () => {
       const me = st.members.find((m) => m.id === st.me);
       const name = prompt('あなたの呼び名', me ? me.name : '');
       if (!name || !name.trim()) return;
       try { await BA.api('PUT', '/members/me', { name: name.trim() }); await BA.reloadMe(); BA.render(); BA.toast('変更しました'); } catch (e) { BA.errToast(e); }
     },
-    addfood: (el) => BA.openFoodForm(el.dataset.food || ''),
+    addfood: (el) => {
+      if (BA.isViewer()) return;
+      BA.openFoodForm(el.dataset.food || '');
+    },
     delfood: async (el) => {
+      if (BA.isViewer()) return;
       if (!confirm('この記録を削除しますか?')) return;
       try { await BA.api('DELETE', '/foods/' + el.dataset.id); BA.toast('削除しました'); await BA.refresh(); } catch (e) { BA.errToast(e); }
     },
-    adddiary: () => BA.openDiary(null),
+    adddiary: () => {
+      if (BA.isViewer()) return;
+      BA.openDiary(null);
+    },
     editdiary: (el) => { const d = (BA.data.diary || []).find((x) => x.id === el.dataset.id); if (d) BA.openDiary(d); },
     report: () => BA.openReport(),
     'report-close': () => BA.closeReport(),
     'report-print': () => BA.printReport(),
     'report-days': (el) => BA.reportDays(Number(el.dataset.d)),
     regencode: async () => {
+      if (BA.isViewer()) return;
       if (!confirm('家族コードを再発行します。古いコードでは参加できなくなります(参加済みの端末はそのまま使えます)。よろしいですか?')) return;
       try { const r = await BA.api('POST', '/families/regenerate-code'); st.family.code = r.code; BA.render(); BA.toast('新しいコードを発行しました'); } catch (e) { BA.errToast(e); }
     },
     delmember: async (el) => {
+      if (BA.isViewer()) return;
       if (!confirm('「' + el.dataset.name + '」を家族から削除しますか?\nその端末は記録を見られなくなります(過去の記録は残ります)。')) return;
       try { await BA.api('DELETE', '/members/' + el.dataset.id); await BA.reloadMe(); BA.render(); BA.toast('削除しました'); } catch (e) { BA.errToast(e); }
     },

@@ -11,48 +11,52 @@
 - **GitHub**: https://github.com/umemak/sukusuku-log
 
 ## 現在できること
-- **最初の画面**: 「家族コードをもらっている」か「はじめて使う」を先に選び、入力画面を分けている(名前欄・コード欄が混ざらない)。招待リンク(`/?code=`)から開くと参加画面にコードが入った状態で始まる。
-- **家族共有**: ログイン不要。「家族を新しく作る」と8文字の家族コードが発行される。パートナーはコード(または `/?code=XXXXXXXX` の招待リンク)で参加。**同じ人がPCなど別の端末を追加するときは、同じ呼び名で参加すると同じメンバーとして扱われる**(別の呼び名なら別メンバー)。記録には「誰が記録したか」が残る。他の家族のデータにはアクセスできない。
+- **最初の画面**: 「家族コードをもらっている」か「はじめて使う」を先に選び、入力画面を分けている(名前欄・コード欄が混ざらない)。招待リンク(`/?code=`)から開くと参加画面にコードが入った状態で始まる。さらに閲覧専用リンク(`/?code=...&readonly=1`)で開くと最初から「閲覧のみ」が選ばれる。
+- **家族共有と権限(閲覧のみユーザー)**: ログイン不要。「家族を新しく作る」と8文字の家族コードが発行される。パートナーや家族はコードで参加。参加時に**「記録・閲覧」**または**「閲覧のみ(記録しない)」**(祖父母や見守り向け)を選択可能。
+  - **閲覧のみユーザーの画面**: 授乳・睡眠・おむつなどの記録ボタン、タイマー、音声入力、写真追加、編集・削除ボタンが非表示になり、見守りや閲覧に専念できるシンプルなUIになる。タイムラインのタップ時も編集フォームではなく閲覧詳細シートを表示。
+  - **権限の変更**: 「家族」タブのメンバー一覧から、記録権限を持つメンバーが各メンバーの権限(記録・閲覧 / 閲覧のみ)を切り替えられる(最後の記録者を閲覧専用に変更できないよう保護)。
+  - **端末の連携**: **同じ人がPCなど別の端末を追加するときは、同じ呼び名で参加すると同じメンバーとして扱われる**(別の呼び名なら別メンバー)。記録には「誰が記録したか」が残る。他の家族のデータにはアクセスできない。
 - **記録の種類**: 母乳(左右)、ミルク(ml)、搾母乳(ml)、睡眠、おしっこ、うんち(状態)、体温、お風呂、薬、メモ
 - **ホーム**: 最後の授乳・睡眠・おむつからの経過時間、授乳/睡眠タイマー、ワンタップ記録(取り消し付き)、今日のまとめ
-- **記録タブ**: 日付ごとのタイムライン。タップで編集・削除。
+- **記録タブ**: 日付ごとのタイムライン。タップで編集・削除(閲覧専用ユーザーは内容の確認のみ)。
 - **まとめタブ**: 7/14/30日の平均値、睡眠・授乳・おむつのグラフ、**お世話の分担**(記録した人ごとの件数と内訳)
 - **健康タブ**:
   - 成長: 体重・身長・頭囲の記録とグラフ(月齢軸)。性別を設定すると **WHO成長基準(2006)** の曲線(-2SD/中央値/+2SD)と**パーセンタイル**を表示
-  - 予防接種: 生年月日から時期を自動計算、接種済みチェック
+  - 予防接種: 生年月日から時期を自動計算、接種済みチェック(閲覧専用ユーザーは確認のみ)
   - 離乳食: 食べたものの記録、特定原材料8品目の経験状況、食後の様子(問題なし/軽い症状/強い症状と受診の目安)
   - **受診用まとめ**: 直近3/7/14日の授乳・睡眠・おむつ・体温・薬・成長(パーセンタイル付き)・接種・アレルギーを1枚に集約し、印刷 / PDF保存
-- **思い出タブ**: 写真(端末側で縮小したJPEG、R2に保存)とひとことの日記。月齢つき、編集・削除可。写真は家族メンバーだけが認証付きで取得できる。
-- **家族タブ**: 家族コード共有・**再発行**(漏えい時。古いコードは無効、参加済み端末は継続)、メンバー一覧と**削除**、複数の子ども(きょうだい)、テーマ切替、連携解除
-- **声・文章でまとめて記録(Gemini)**: ホームの「声・文章でまとめて記録」から、話しかける(最大30秒)か文章で入力 → AIが記録の候補に変換 → 確認・修正してから保存。例「さっきミルク120と、おしっこ。うんちはやわらかめ」。`GEMINI_API_KEY` を設定した環境でのみボタンが表示される。1家族あたり1日40回まで(日本時間)。AIは記録の抽出だけを行い、診断や助言はしない。音声・文章はGoogle(Gemini API)に送信され、アプリ側には保存しない(有料枠のキー前提)。
+- **思い出タブ**: 写真(端末側で縮小したJPEG、R2に保存)とひとことの日記。月齢つき、編集・削除可(閲覧専用ユーザーは閲覧のみ)。写真は家族メンバーだけが認証付きで取得できる。
+- **家族タブ**: 家族コード共有・閲覧用招待リンクのコピー・**再発行**(漏えい時。古いコードは無効、参加済み端末は継続)、メンバー一覧(権限バッジ・権限切り替え・**削除**)、複数の子ども(きょうだい)、テーマ切替、連携解除
+- **声・文章でまとめて記録(Gemini)**: ホームの「声・文章でまとめて記録」から、話しかける(最大30秒)か文章で入力 → AIが記録の候補に変換 → 確認・修正してから保存。例「さっきミルク120と、おしっこ。うんちはやわらかめ」。`GEMINI_API_KEY` を設定した環境でのみボタンが表示される(閲覧専用ユーザーには非表示)。1家族あたり1日40回まで(日本時間)。AIは記録の抽出だけを行い、診断や助言はしない。音声・文章はGoogle(Gemini API)に送信され、アプリ側には保存しない(有料枠のキー前提)。
 - 他端末の記録は20秒ごと、および画面を開き直したときに自動で反映される。
 
 ## Data Architecture
-- **Storage**: Cloudflare D1(SQLite)。`migrations/0001_initial_schema.sql`, `0002_diary_foods.sql`
+- **Storage**: Cloudflare D1(SQLite)。`migrations/0001_initial_schema.sql`, `0002_diary_foods.sql`, `0006_member_role.sql`
 - **Object storage**: Cloudflare R2(バケット `sukusuku-log-photos`、バインディング `PHOTOS`、キーは `<family_id>/<photo_id>`)
-- **Tables**: families / members / children / logs / growth / vaccinations / foods / diary / ai_usage(AI利用回数) / member_tokens(追加端末の鍵)
+- **Tables**: families / members(role: 'editor' | 'viewer') / children / logs / growth / vaccinations / foods / diary / ai_usage(AI利用回数) / member_tokens(追加端末の鍵)
 - **WHO データ**: `public/static/who-lms.js`(Weight-for-age / Length(Height)-for-age / Head circumference-for-age の LMS 表、0〜5歳)
-- **認証**: 端末ごとのランダムトークン(localStorage)。DBにはSHA-256ハッシュのみ保存。全APIが家族IDで絞り込み。
+- **認証**: 端末ごとのランダムトークン(localStorage)。DBにはSHA-256ハッシュのみ保存。全APIが家族IDで絞り込み、書き込みAPIは `editor` 権限を要求。
 
 ## API(すべて `/api` 配下、`Authorization: Bearer <token>`)
 | メソッド | パス | 内容 |
 |---|---|---|
-| POST | /families, /join | 家族作成 / 家族コードで参加(認証不要) |
-| GET | /me | 自分・家族・メンバー・子ども |
-| POST/PUT/DELETE | /children[/:id] | 子どもの追加・更新・削除 |
-| GET/POST | /children/:id/logs | 育児ログ取得(from,to,limit) / 追加 |
+| POST | /families, /join | 家族作成 / 家族コードで参加(role指定可、認証不要) |
+| GET | /me | 自分(role含む)・家族・メンバー・子ども |
+| PUT | /members/:id/role | メンバー権限の変更 (editor ⇄ viewer、editorのみ) |
+| POST/PUT/DELETE | /children[/:id] | 子どもの追加・更新・削除 (editorのみ) |
+| GET/POST | /children/:id/logs | 育児ログ取得(from,to,limit) / 追加(POSTはeditorのみ) |
 | GET | /children/:id/last | 種類ごとの最新記録 |
-| PUT/DELETE | /logs/:id | ログ更新 / 削除 |
-| POST | /families/regenerate-code | 家族コードの再発行 |
+| PUT/DELETE | /logs/:id | ログ更新 / 削除 (editorのみ) |
+| POST | /families/regenerate-code | 家族コードの再発行 (editorのみ) |
 | POST | /families/discard | 「はじめて使う」の取り消し(メンバー1人・お子さん0人の家族だけ削除できる) |
-| DELETE | /members/:id | メンバー削除(自分自身は不可) |
-| GET/POST, DELETE | /children/:id/growth, /growth/:id | 成長記録 |
-| GET/POST, DELETE | /children/:id/foods, /foods/:id | 離乳食・アレルギー記録 |
-| POST, GET, DELETE | /photos, /photos/:id | 写真(JPEGのみ・4MBまで) |
-| GET/POST, PUT/DELETE | /children/:id/diary, /diary/:id | 思い出日記 |
-| GET, PUT/DELETE | /children/:id/vaccinations[/:key] | 接種記録 |
+| DELETE | /members/:id | メンバー削除(自分自身は不可、editorのみ) |
+| GET/POST, DELETE | /children/:id/growth, /growth/:id | 成長記録(POST/DELETEはeditorのみ) |
+| GET/POST, DELETE | /children/:id/foods, /foods/:id | 離乳食・アレルギー記録(POST/DELETEはeditorのみ) |
+| POST, GET, DELETE | /photos, /photos/:id | 写真(JPEGのみ・4MBまで、POST/DELETEはeditorのみ) |
+| GET/POST, PUT/DELETE | /children/:id/diary, /diary/:id | 思い出日記(POST/PUT/DELETEはeditorのみ) |
+| GET, PUT/DELETE | /children/:id/vaccinations[/:key] | 接種記録(PUT/DELETEはeditorのみ) |
 | GET | /ai/status | AI機能の有効/無効と今日の残り回数 |
-| POST | /ai/parse?tz= | 音声(raw body: audio/webm, audio/mp4 等・3MBまで)または `{text}` → 記録候補(保存はしない) |
+| POST | /ai/parse?tz= | 音声または `{text}` → 記録候補 (editorのみ) |
 
 ## ローカル開発
 ```

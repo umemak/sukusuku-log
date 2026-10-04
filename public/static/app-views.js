@@ -83,9 +83,14 @@
   };
 
   // ---------- オンボーディング ----------
-  V.onboard = function (prefill) {
+  V.onboard = function (prefill, prefillReadonly) {
     const code = prefill || '';
     const mode = BA.state.obMode || (code ? 'join' : 'choose');
+    if (prefillReadonly && !BA.state.obRoleTouched) {
+      BA.state.obRole = 'viewer';
+    }
+    const role = BA.state.obRole || 'editor';
+    const isViewer = role === 'viewer';
     const head = '<div class="logo"><i class="fas fa-baby"></i></div><h1>すくすくログ</h1>';
     const back = '<button class="link-btn ob-back" data-act="ob-go" data-mode="choose"><i class="fas fa-arrow-left"></i> 最初の画面に戻る</button>';
     const foot = '<p class="disclaimer">ログイン不要です。この端末にだけ保存される鍵で家族のデータにアクセスします。ブラウザのデータを消すと再度コードでの参加が必要です。記録内容は医療的な診断ではありません。</p>';
@@ -95,7 +100,15 @@
         '<p class="lead">家族コードで参加します</p>' +
         '<div class="card">' +
         '<label class="field"><span>1. 家族コード(8文字)</span><input type="text" id="ob-code" maxlength="12" value="' + esc(code) + '" placeholder="例: K7M2QX9A" autocapitalize="characters" autocomplete="off" style="letter-spacing:.12em;font-weight:700"></label>' +
-        '<label class="field"><span>2. あなたの呼び名(記録した人として表示されます)</span><input type="text" id="ob-name" maxlength="30" placeholder="例: ママ、パパ、おばあちゃん" autocomplete="nickname"></label>' +
+        '<label class="field"><span>2. あなたの呼び名(表示名)</span><input type="text" id="ob-name" maxlength="30" placeholder="例: パパ、ママ、おじいちゃん" autocomplete="nickname"></label>' +
+        '<div class="field-label">3. 参加モード</div>' +
+        '<div class="seg" role="group" aria-label="参加モード" style="margin-bottom:6px">' +
+        '<button type="button" data-act="ob-role" data-role="editor" aria-pressed="' + (!isViewer) + '"><i class="fas fa-pen"></i> 記録・閲覧</button>' +
+        '<button type="button" data-act="ob-role" data-role="viewer" aria-pressed="' + isViewer + '"><i class="fas fa-eye"></i> 閲覧のみ(記録しない)</button>' +
+        '</div>' +
+        '<p class="muted" style="margin:0 0 12px;font-size:12px">' +
+        (isViewer ? 'お世話の記録は行わず、タイムラインや写真・グラフの閲覧専用として参加します（祖父母や見守り向け）。' : '授乳・睡眠・おむつなどの記録やお子さんの設定を家族で一緒に行えます。') +
+        '</p>' +
         '<div class="notice"><i class="fas fa-desktop"></i> すでに参加している人が、スマホやPCなど<b>別の端末を追加する</b>ときは、前と<b>同じ呼び名</b>を入れてください。同じ人として使えます。</div>' +
         '<div class="error-text" id="ob-err"></div>' +
         '<button class="btn primary block" data-act="ob-join"><i class="fas fa-right-to-bracket"></i>この家族に参加する</button></div>' +
@@ -128,6 +141,12 @@
   };
 
   V.noChild = function () {
+    if (BA.isViewer()) {
+      return '<div class="onboard"><div class="logo"><i class="fas fa-baby"></i></div><h1>お子さんがまだ登録されていません</h1>' +
+        '<p class="lead">家族がお子さんの情報を登録すると、ここに育児記録が表示されます。登録されるまでお待ちください。</p>' +
+        '<button class="btn block" data-act="refresh"><i class="fas fa-rotate"></i> 最新の状態を確認する</button>' +
+        '<button class="link-btn" data-act="logout" style="margin-top:14px"><i class="fas fa-right-from-bracket"></i> 連携を解除して戻る</button></div>';
+    }
     return '<div class="onboard"><div class="logo"><i class="fas fa-baby"></i></div><h1>お子さんを登録しましょう</h1>' +
       '<p class="lead">生年月日から月齢と予防接種の時期を計算します。</p>' +
       '<button class="btn primary block" data-act="addchild"><i class="fas fa-plus"></i>お子さんを登録する</button>' +
@@ -136,6 +155,7 @@
 
   // ---------- ホーム ----------
   V.home = function () {
+    const isViewer = BA.isViewer();
     const logs = (BA.data.logs || []).map(BA.parseLog);
     const last = BA.data.last || {};
     const now = Date.now();
@@ -167,8 +187,8 @@
       return '<div class="timer-card">' + icon(l.type) +
         '<div class="tc-body"><div class="tc-title">' + (l.type === 'sleep' ? 'ねんね中' : '授乳中(' + (BA.SIDE[l.d.side] || '') + ')') + '</div>' +
         '<div class="tc-time" data-timer="' + l.started_at + '">' + BA.fmtTimer(now - l.started_at) + '</div></div>' +
-        '<button class="btn primary" data-act="stoptimer" data-id="' + l.id + '"><i class="fas fa-stop"></i>' + (l.type === 'sleep' ? '起きた' : '終了') + '</button>' +
-        '<button class="icon-btn" data-act="canceltimer" data-id="' + l.id + '" aria-label="破棄" style="box-shadow:none"><i class="fas fa-xmark"></i></button></div>';
+        (isViewer ? '' : '<button class="btn primary" data-act="stoptimer" data-id="' + l.id + '"><i class="fas fa-stop"></i>' + (l.type === 'sleep' ? '起きた' : '終了') + '</button>' +
+          '<button class="icon-btn" data-act="canceltimer" data-id="' + l.id + '" aria-label="破棄" style="box-shadow:none"><i class="fas fa-xmark"></i></button>') + '</div>';
     }).join('');
 
     const s = BA.summarize(logs, ds, ds + BA.DAY);
@@ -183,7 +203,18 @@
     const sideHint = lb && lb.d.side && lb.d.side !== 'both'
       ? '<p class="muted" style="margin-top:10px"><i class="fas fa-lightbulb" style="color:var(--warn)"></i> 前回の母乳は' + BA.SIDE[lb.d.side] + '。次は' + (lb.d.side === 'left' ? '右' : '左') + 'からがおすすめです。</p>' : '';
 
+    const quickCard = isViewer ? '' :
+      '<section class="card" aria-label="かんたん記録"><h2><i class="fas fa-bolt" style="color:var(--warn)"></i>ワンタップ記録</h2>' +
+      '<div class="quick-main">' + q('breast', '母乳', true) + q('formula', 'ミルク', true) +
+      '<button class="qbtn" data-act="sleep" data-active="' + !!sleeping + '"><span class="qi" style="background:' + BA.TYPES.sleep.color + '"><i class="fas ' + (sleeping ? 'fa-sun' : 'fa-moon') + '"></i></span>' + (sleeping ? '起きた' : 'ねんね') + '</button></div>' +
+      '<div class="quick-sub">' + q('pee', 'おしっこ') + q('poop', 'うんち') + q('temp', '体温', true) +
+      '<button class="qbtn" data-act="more"><span class="qi" style="background:var(--sub)"><i class="fas fa-ellipsis"></i></span>その他</button></div>' +
+      (BA.ai && BA.ai.enabled ? '<button class="voice-btn" data-act="voice"><i class="fas fa-microphone"></i>声・文章でまとめて記録</button>' : '') + sideHint + '</section>';
+
+    const viewerNotice = isViewer ? '<div class="notice" style="margin-bottom:12px;color:var(--sub)"><i class="fas fa-eye"></i> 閲覧専用モードです（記録の追加・編集はできません）</div>' : '';
+
     return header() + '<main id="view">' +
+      viewerNotice +
       '<section aria-label="前回からの経過"><div class="since-grid">' +
       '<div class="since"><div class="lbl"><i class="fas fa-bottle-water"></i>最後の授乳</div>' + feedBox + '</div>' +
       '<div class="since"><div class="lbl"><i class="fas fa-moon"></i>睡眠</div>' + sleepBox + '</div>' +
@@ -191,12 +222,7 @@
       '<div class="since"><div class="lbl"><i class="fas fa-poop"></i>うんち</div>' + simple('poop') + '</div></div></section>' +
       (timers ? '<section aria-label="計測中">' + timers + '</section>' : '') +
       (V.subsidyHint ? V.subsidyHint() : '') +
-      '<section class="card" aria-label="かんたん記録"><h2><i class="fas fa-bolt" style="color:var(--warn)"></i>ワンタップ記録</h2>' +
-      '<div class="quick-main">' + q('breast', '母乳', true) + q('formula', 'ミルク', true) +
-      '<button class="qbtn" data-act="sleep" data-active="' + !!sleeping + '"><span class="qi" style="background:' + BA.TYPES.sleep.color + '"><i class="fas ' + (sleeping ? 'fa-sun' : 'fa-moon') + '"></i></span>' + (sleeping ? '起きた' : 'ねんね') + '</button></div>' +
-      '<div class="quick-sub">' + q('pee', 'おしっこ') + q('poop', 'うんち') + q('temp', '体温', true) +
-      '<button class="qbtn" data-act="more"><span class="qi" style="background:var(--sub)"><i class="fas fa-ellipsis"></i></span>その他</button></div>' +
-      (BA.ai && BA.ai.enabled ? '<button class="voice-btn" data-act="voice"><i class="fas fa-microphone"></i>声・文章でまとめて記録</button>' : '') + sideHint + '</section>' +
+      quickCard +
       '<section class="card" aria-label="今日のまとめ"><h2><i class="fas fa-calendar-day" style="color:var(--primary)"></i>今日のまとめ</h2>' +
       '<div class="today-stats">' +
       '<div><div class="n">' + s.feed + '<small>回</small></div><div class="l">授乳</div></div>' +
@@ -206,12 +232,13 @@
       '<div><div class="n">' + s.poop + '<small>回</small></div><div class="l">うんち</div></div></div></section>' +
       '<section class="card" aria-label="最近の記録"><h2><i class="fas fa-clock-rotate-left" style="color:var(--primary)"></i>今日の記録</h2>' +
       (todays.length ? '<div class="log-list">' + todays.map(logRow).join('') + '</div><button class="link-btn" data-act="tab" data-tab="timeline" style="margin-top:6px">すべて見る →</button>'
-        : '<div class="empty">まだ今日の記録はありません。<br>上のボタンから記録してみましょう。</div>') + '</section>' +
+        : '<div class="empty">' + (isViewer ? 'まだ今日の記録はありません。' : 'まだ今日の記録はありません。<br>上のボタンから記録してみましょう。') + '</div>') + '</section>' +
       '</main>' + V.tabbar();
   };
 
   // ---------- 記録(タイムライン) ----------
   V.timeline = function () {
+    const isViewer = BA.isViewer();
     const logs = (BA.data.logs || []).map(BA.parseLog);
     const ds = BA.dayStart(Date.now()) + BA.state.dayOffset * BA.DAY;
     const de = ds + BA.DAY;
@@ -231,7 +258,7 @@
       '<section class="card" aria-label="記録一覧">' +
       (shown.length ? '<div class="log-list">' + shown.map(logRow).join('') + '</div>' : '<div class="empty">この日の記録はありません</div>') +
       '</section></main>' +
-      '<button class="fab" data-act="more"><i class="fas fa-plus"></i>記録を追加</button>' + V.tabbar();
+      (isViewer ? '' : '<button class="fab" data-act="more"><i class="fas fa-plus"></i>記録を追加</button>') + V.tabbar();
   };
 
   // ---------- まとめ ----------
@@ -329,6 +356,7 @@
   };
 
   function growthBody() {
+    const isViewer = BA.isViewer();
     const g = BA.data.growth || [];
     const metric = BA.state.growthMetric;
     const lastG = g.slice(-1)[0];
@@ -342,7 +370,7 @@
     const list = g.slice().reverse().map((r) =>
       '<div class="log-row" style="cursor:default"><span class="log-main"><span class="log-title">' + esc(r.measured_on) + '</span><br><span class="log-sub">' +
       [r.weight_g != null ? '体重 ' + r.weight_g.toLocaleString() + 'g' + pc('wfa', r, r.weight_g / 1000) : '', r.height_cm != null ? '身長 ' + r.height_cm + 'cm' + pc('lhfa', r, r.height_cm) : '', r.head_cm != null ? '頭囲 ' + r.head_cm + 'cm' + pc('hcfa', r, r.head_cm) : '', esc(r.note || '')].filter(Boolean).join(' ・ ') +
-      '</span></span><button class="icon-btn" data-act="delgrowth" data-id="' + r.id + '" aria-label="削除" style="box-shadow:none"><i class="fas fa-trash" style="color:var(--sub)"></i></button></div>').join('');
+      '</span></span>' + (isViewer ? '' : '<button class="icon-btn" data-act="delgrowth" data-id="' + r.id + '" aria-label="削除" style="box-shadow:none"><i class="fas fa-trash" style="color:var(--sub)"></i></button>') + '</div>').join('');
     return '<section class="card"><h2><i class="fas fa-seedling" style="color:var(--ok)"></i>成長の記録</h2>' +
       (lastG ? '<div class="avg-grid" style="margin-bottom:12px">' +
         '<div><div class="n">' + (lastG.weight_g != null ? (lastG.weight_g / 1000).toFixed(2) + '<small>kg</small>' : '—') + '</div><div class="l">最新の体重' + pc('wfa', lastG, lastG.weight_g != null ? lastG.weight_g / 1000 : null) + '</div></div>' +
@@ -351,7 +379,7 @@
       '<div class="seg" style="margin-bottom:12px">' +
       [['weight', '体重'], ['height', '身長'], ['head', '頭囲']].map((m) => '<button data-act="gmetric" data-m="' + m[0] + '" aria-pressed="' + (metric === m[0]) + '">' + m[1] + '</button>').join('') + '</div>' +
       (g.length >= 1 ? '<div class="chart-box" style="height:280px"><canvas id="ch-growth" aria-label="成長グラフ"></canvas></div>' + (noSex ? '<p class="legend-note">お子さんの性別を設定(編集)すると、WHO基準の成長曲線とパーセンタイルが表示されます。</p>' : '<p class="legend-note">点線は WHO 成長基準の目安(下から -2SD / 中央値 / +2SD。おおよそ 3・50・97 パーセンタイル)です。</p>') : '<div class="empty">まだ記録がありません。<br>出生時や健診の測定値を記録しましょう。</div>') +
-      '<button class="btn primary block" data-act="addgrowth" style="margin-top:12px"><i class="fas fa-plus"></i>成長を記録する</button></section>' +
+      (isViewer ? '' : '<button class="btn primary block" data-act="addgrowth" style="margin-top:12px"><i class="fas fa-plus"></i>成長を記録する</button>') + '</section>' +
       (g.length ? '<section class="card"><h2>記録の履歴</h2><div class="log-list">' + list + '</div></section>' : '') +
       '<p class="disclaimer">成長の目安は個人差が大きいものです。パーセンタイルは WHO Child Growth Standards(2006)に基づく参考値で、日本の母子健康手帳(乳幼児身体発育曲線)とは基準が異なります。早産の場合は修正月齢で見ます。母子健康手帳の成長曲線とあわせて、健診で医師・保健師に相談してください。</p>';
   }
@@ -439,23 +467,45 @@
   V.family = function () {
     const st = BA.state;
     const theme = BA.ls.get('ba_theme') || 'auto';
-    const members = st.members.map((m) =>
-      '<li><i class="fas fa-user" style="color:var(--primary)"></i><span style="flex:1">' + esc(m.name) + '</span>' + (m.id === st.me ? '<span class="badge">あなた</span>'
-        : '<button class="link-btn" data-act="delmember" data-id="' + m.id + '" data-name="' + esc(m.name) + '" style="color:var(--danger)">削除</button>') + '</li>').join('');
+    const isViewer = BA.isViewer();
+    const members = st.members.map((m) => {
+      const isMe = m.id === st.me;
+      const roleBadge = m.role === 'viewer'
+        ? '<span class="badge" style="background:var(--sub);color:#fff"><i class="fas fa-eye"></i> 閲覧のみ</span>'
+        : '<span class="badge" style="background:var(--surface);border:1px solid var(--line)"><i class="fas fa-pen"></i> 記録</span>';
+      let actions = '';
+      if (!isViewer) {
+        actions += '<button class="link-btn" data-act="changerole" data-id="' + m.id + '" data-role="' + (m.role || 'editor') + '" data-name="' + esc(m.name) + '" style="font-size:12px">権限変更</button>';
+        if (!isMe) {
+          actions += '<button class="link-btn" data-act="delmember" data-id="' + m.id + '" data-name="' + esc(m.name) + '" style="color:var(--danger);font-size:12px">削除</button>';
+        }
+      }
+      return '<li><i class="fas fa-user" style="color:var(--primary)"></i><span style="flex:1">' + esc(m.name) + '</span>' +
+        (isMe ? '<span class="badge">あなた</span>' : '') + roleBadge + actions + '</li>';
+    }).join('');
+
     const kids = st.children.map((c) =>
-      '<li><i class="fas fa-baby" style="color:var(--primary)"></i><span style="flex:1">' + esc(c.name) + ' <span class="muted">' + esc(BA.ageText(c.birthday)) + '</span></span><button class="link-btn" data-act="editchild" data-id="' + c.id + '">編集</button></li>').join('');
+      '<li><i class="fas fa-baby" style="color:var(--primary)"></i><span style="flex:1">' + esc(c.name) + ' <span class="muted">' + esc(BA.ageText(c.birthday)) + '</span></span>' +
+      (isViewer ? '' : '<button class="link-btn" data-act="editchild" data-id="' + c.id + '">編集</button>') + '</li>').join('');
     const me = st.members.find((m) => m.id === st.me);
     return header() + '<main id="view">' +
       '<section class="card"><h2><i class="fas fa-people-roof" style="color:var(--primary)"></i>家族で共有する</h2>' +
       '<p class="muted" style="margin-bottom:10px">パートナーや家族がこのコードで参加すると、同じ記録をそれぞれのスマホで見たり、記録したりできます。</p>' +
       '<div class="code-box" aria-label="家族コード">' + esc(st.family.code) + '</div>' +
-      '<div class="btn-row" style="margin-top:10px"><button class="btn" data-act="copycode"><i class="fas fa-copy"></i>コードをコピー</button><button class="btn primary" data-act="sharecode"><i class="fas fa-share-nodes"></i>招待を送る</button></div>' +
-      '<button class="link-btn" data-act="regencode" style="margin-top:8px"><i class="fas fa-arrows-rotate"></i> 家族コードを再発行する</button>' +
+      '<div class="btn-row" style="margin-top:10px">' +
+      '<button class="btn" data-act="copycode"><i class="fas fa-copy"></i>コードをコピー</button>' +
+      '<button class="btn primary" data-act="sharecode"><i class="fas fa-share-nodes"></i>招待を送る</button></div>' +
+      '<div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)">' +
+      '<p class="muted" style="margin-bottom:8px;font-size:13px"><i class="fas fa-eye"></i> おじいちゃん・おばあちゃんなど、閲覧専用で招待するとき：</p>' +
+      '<div class="btn-row">' +
+      '<button class="btn" data-act="copyreadonlylink"><i class="fas fa-link"></i>閲覧用リンクをコピー</button>' +
+      '<button class="btn soft" data-act="sharereadonly"><i class="fas fa-share-nodes"></i>閲覧用で招待</button></div></div>' +
+      (isViewer ? '' : '<button class="link-btn" data-act="regencode" style="margin-top:12px"><i class="fas fa-arrows-rotate"></i> 家族コードを再発行する</button>') +
       '<p class="disclaimer" style="margin-top:10px">コードを知っている人は誰でも参加できます。信頼できる家族にだけ共有してください。コードが漏れたかも…というときは再発行すると古いコードは使えなくなります(すでに参加済みの端末はそのまま使えます)。</p></section>' +
       '<section class="card"><h2><i class="fas fa-users" style="color:var(--primary)"></i>メンバー(' + st.members.length + '人)</h2><ul class="member-list">' + members + '</ul>' +
       '<button class="link-btn" data-act="rename" style="margin-top:6px"><i class="fas fa-pen"></i> 自分の呼び名を変更' + (me ? '(' + esc(me.name) + ')' : '') + '</button></section>' +
       '<section class="card"><h2><i class="fas fa-baby" style="color:var(--primary)"></i>お子さん</h2><ul class="member-list">' + kids + '</ul>' +
-      '<button class="btn block" data-act="addchild" style="margin-top:10px"><i class="fas fa-plus"></i>きょうだいを追加</button></section>' +
+      (isViewer ? '' : '<button class="btn block" data-act="addchild" style="margin-top:10px"><i class="fas fa-plus"></i>きょうだいを追加</button>') + '</section>' +
       '<section class="card"><h2><i class="fas fa-circle-half-stroke" style="color:var(--primary)"></i>表示テーマ</h2><div class="seg">' +
       [['auto', '自動'], ['light', 'ライト'], ['dark', 'ダーク(夜間)']].map((t) => '<button data-act="theme" data-t="' + t[0] + '" aria-pressed="' + (theme === t[0]) + '">' + t[1] + '</button>').join('') + '</div></section>' +
       '<section class="card"><h2><i class="fas fa-mobile-screen" style="color:var(--primary)"></i>ホーム画面に追加</h2>' +

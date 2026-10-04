@@ -31,27 +31,29 @@
   const matchAllergen = (a, f) => a.alias.some((k) => String(f.food).includes(k));
 
   V.foodBody = function () {
+    const isViewer = BA.isViewer();
     const foods = BA.data.foods || [];
     const kinds = new Set(foods.map((f) => f.food)).size;
     const grid = ALLERGENS.map((a) => {
       const hits = foods.filter((f) => matchAllergen(a, f));
       const worst = hits.some((f) => f.reaction === 'severe') ? 'severe' : hits.some((f) => f.reaction === 'mild') ? 'mild' : '';
       const sub = hits.length ? hits.length + '回' + (worst ? '・' + REACTION[worst].label : '') : '未経験';
-      return '<button class="allergen" data-act="addfood" data-food="' + esc(a.name) + '" data-done="' + (hits.length > 0) + '">' +
+      const act = isViewer ? '' : ' data-act="addfood"';
+      return '<button class="allergen" ' + act + ' data-food="' + esc(a.name) + '" data-done="' + (hits.length > 0) + '"' + (isViewer ? ' style="cursor:default"' : '') + '>' +
         '<span><b>' + esc(a.name) + '</b><br><small>' + esc(sub) + '</small></span>' +
         (hits.length ? '<i class="fas ' + (worst ? 'fa-triangle-exclamation' : 'fa-circle-check') + '" style="color:' + (worst === 'severe' ? 'var(--danger)' : worst ? 'var(--warn)' : 'var(--ok)') + '"></i>'
-          : '<i class="fas fa-plus" style="color:var(--sub)"></i>') + '</button>';
+          : (isViewer ? '' : '<i class="fas fa-plus" style="color:var(--sub)"></i>')) + '</button>';
     }).join('');
     const rows = foods.slice(0, 40).map((f) => {
       const r = REACTION[f.reaction] || REACTION.ok;
       return '<div class="log-row" style="cursor:default"><span class="log-main"><span class="log-title">' + esc(f.food) +
         (r.badge ? ' <span class="badge ' + r.badge + '">' + r.label + '</span>' : '') + '</span><br><span class="log-sub">' +
         esc([f.tried_on.replace(/-/g, '/'), f.note || '', BA.memberName(f.member_id)].filter(Boolean).join(' ・ ')) + '</span></span>' +
-        '<button class="icon-btn" data-act="delfood" data-id="' + f.id + '" aria-label="削除" style="box-shadow:none"><i class="fas fa-trash" style="color:var(--sub)"></i></button></div>';
+        (isViewer ? '' : '<button class="icon-btn" data-act="delfood" data-id="' + f.id + '" aria-label="削除" style="box-shadow:none"><i class="fas fa-trash" style="color:var(--sub)"></i></button>') + '</div>';
     }).join('');
     return '<section class="card"><h2><i class="fas fa-bowl-rice" style="color:var(--warn)"></i>離乳食の記録</h2>' +
       '<p class="muted" style="margin-bottom:10px">これまでに食べた食材: <b>' + kinds + '</b>種類</p>' +
-      '<button class="btn primary block" data-act="addfood"><i class="fas fa-plus"></i>食べたものを記録する</button></section>' +
+      (isViewer ? '' : '<button class="btn primary block" data-act="addfood"><i class="fas fa-plus"></i>食べたものを記録する</button>') + '</section>' +
       '<section class="card"><h2><i class="fas fa-shield-heart" style="color:var(--danger)"></i>アレルギーの原因になりやすい食材</h2>' +
       '<p class="muted" style="margin-bottom:10px">特定原材料8品目の経験状況です(食材名で判定する目安)。初めての食材は、少量から・平日の日中に与えると安心です。</p>' +
       '<div class="allergen-grid">' + grid + '</div>' +
@@ -110,6 +112,7 @@
   }
 
   V.memory = function () {
+    const isViewer = BA.isViewer();
     const c = BA.child();
     const list = BA.data.diary || [];
     const header = V.header();
@@ -124,12 +127,30 @@
     return header + '<main id="view">' +
       '<section class="card"><h2><i class="fas fa-book-open" style="color:var(--primary)"></i>思い出日記</h2>' +
       '<p class="muted" style="margin-bottom:10px">成長の瞬間を写真とひとことで残して、家族みんなで見返せます。</p>' +
-      '<button class="btn primary block" data-act="adddiary"><i class="fas fa-camera"></i>思い出を残す</button></section>' +
+      (isViewer ? '' : '<button class="btn primary block" data-act="adddiary"><i class="fas fa-camera"></i>思い出を残す</button>') + '</section>' +
       (cards ? '<section class="diary-list" style="display:grid;gap:12px" aria-label="思い出一覧">' + cards + '</section>' : '<div class="card"><div class="empty">まだ思い出がありません。<br>最初の1枚を残してみましょう。</div></div>') +
       '</main>' + V.tabbar();
   };
 
   BA.openDiary = function (entry) {
+    if (BA.isViewer()) {
+      if (!entry) return;
+      const c = BA.child();
+      const who = BA.memberName(entry.member_id);
+      function renderView() {
+        return (entry.photo_id ? '<img class="photo-full" data-photo="' + entry.photo_id + '" alt="思い出の写真">' : '') +
+          '<div style="margin:10px 0 6px;font-size:15px;font-weight:700">' + esc(entry.entry_date.replace(/-/g, '/')) +
+          ' <span class="badge">' + esc(ageAt(c.birthday, entry.entry_date)) + '</span></div>' +
+          (entry.body ? '<p style="margin:0 0 10px;white-space:pre-wrap;line-height:1.6">' + esc(entry.body) + '</p>' : '') +
+          (who ? '<p class="muted" style="font-size:12px;margin:0 0 14px"><i class="fas fa-user"></i> 記録した人: ' + esc(who) + '</p>' : '') +
+          '<button class="btn block" data-act="close"><i class="fas fa-xmark"></i>閉じる</button>';
+      }
+      BA.openSheet('思い出', '', renderView(), {
+        click(act) { if (act === 'close') BA.closeSheet(); },
+        input() {}
+      });
+      return;
+    }
     const edit = !!entry;
     const st = { date: entry ? entry.entry_date : BA.ymd(Date.now()), body: entry ? entry.body || '' : '', blob: null, preview: null };
     const revoke = () => { if (st.preview) { URL.revokeObjectURL(st.preview); st.preview = null; } };

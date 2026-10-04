@@ -28,13 +28,14 @@
   BA.ls = ls;
   BA.state = {
     token: ls.get('ba_token'),
-    me: null, family: null, members: [], children: [],
+    me: null, role: null, family: null, members: [], children: [],
     childId: ls.get('ba_child'),
     tab: 'home',
     dayOffset: 0,
     statDays: 7,
     healthTab: 'growth',
-    growthMetric: 'weight'
+    growthMetric: 'weight',
+    obRole: 'editor'
   };
   BA.data = {};
   BA.charts = [];
@@ -121,6 +122,11 @@
   BA.memberName = (id) => {
     const m = BA.state.members.find((x) => x.id === id);
     return m ? m.name : '';
+  };
+  BA.me = () => (BA.state.members || []).find((x) => x.id === BA.state.me) || null;
+  BA.isViewer = () => {
+    const m = BA.me();
+    return m ? m.role === 'viewer' : BA.state.role === 'viewer';
   };
   BA.child = () => BA.state.children.find((c) => c.id === BA.state.childId) || BA.state.children[0] || null;
 

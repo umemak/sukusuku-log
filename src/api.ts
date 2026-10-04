@@ -3,7 +3,7 @@ import type { Context, Next } from 'hono'
 import { parseCare, GeminiError, type GeminiEnv } from './gemini'
 
 export type Bindings = { DB: D1Database; PHOTOS: R2Bucket } & GeminiEnv
-type Vars = { familyId: string; memberId: string }
+type Vars = { familyId: string; memberId: string; role: 'editor' | 'viewer' }
 type Env = { Bindings: Bindings; Variables: Vars }
 
 const LOG_TYPES = [
@@ -55,6 +55,13 @@ async function readJson(c: Context): Promise<Record<string, unknown>> {
   }
 }
 
+function requireEditor(c: Context<Env>) {
+  if (c.get('role') === 'viewer') {
+    return c.json({ error: '閲覧専用メンバーのため、記録や変更はできません' }, 403)
+  }
+  return null
+}
+
 const api = new Hono<Env>()
 
 // ---------- 認証不要: 家族の作成・参加 ----------
@@ -83,16 +90,17 @@ api.post('/families', async (c) => {
   const t = now()
   await db.batch([
     db.prepare('INSERT INTO families (id, code, created_at) VALUES (?, ?, ?)').bind(familyId, code, t),
-    db.prepare('INSERT INTO members (id, family_id, name, token_hash, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(memberId, familyId, memberName, await sha256(token), t)
+    db.prepare('INSERT INTO members (id, family_id, name, token_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(memberId, familyId, memberName, await sha256(token), 'editor', t)
   ])
-  return c.json({ token, code, memberId })
+  return c.json({ token, code, memberId, role: 'editor' })
 })
 
 api.post('/join', async (c) => {
   const body = await readJson(c)
   const memberName = str(body.memberName, 30)
   const code = str(body.code, 20)?.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const role = body.role === 'viewer' ? 'viewer' : 'editor'
   if (!memberName) return c.json({ error: 'あなたの呼び名を入力してください' }, 400)
   if (!code) return c.json({ error: '家族コードを入力してください' }, 400)
 
@@ -105,23 +113,23 @@ api.post('/join', async (c) => {
 
   // 同じ呼び名のメンバーがいれば、その人の別の端末(PCなど)として追加する
   const existing = await db
-    .prepare('SELECT id, name FROM members WHERE family_id = ? AND lower(name) = lower(?) ORDER BY created_at LIMIT 1')
+    .prepare('SELECT id, name, role FROM members WHERE family_id = ? AND lower(name) = lower(?) ORDER BY created_at LIMIT 1')
     .bind(family.id, memberName)
-    .first<{ id: string; name: string }>()
+    .first<{ id: string; name: string; role: string }>()
   if (existing) {
     await db
       .prepare('INSERT INTO member_tokens (token_hash, member_id, created_at) VALUES (?, ?, ?)')
       .bind(tokenHash, existing.id, now())
       .run()
-    return c.json({ token, code, memberId: existing.id, linked: true, memberName: existing.name })
+    return c.json({ token, code, memberId: existing.id, role: existing.role || 'editor', linked: true, memberName: existing.name })
   }
 
   const memberId = uuid()
   await db
-    .prepare('INSERT INTO members (id, family_id, name, token_hash, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(memberId, family.id, memberName, tokenHash, now())
+    .prepare('INSERT INTO members (id, family_id, name, token_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(memberId, family.id, memberName, tokenHash, role, now())
     .run()
-  return c.json({ token, code, memberId, linked: false })
+  return c.json({ token, code, memberId, role, linked: false })
 })
 
 // ---------- 認証 ----------
@@ -134,19 +142,20 @@ api.use('*', async (c: Context<Env>, next: Next) => {
   if (!token) return c.json({ error: 'unauthorized' }, 401)
   const hash = await sha256(token)
   let m = await c.env.DB
-    .prepare('SELECT id, family_id FROM members WHERE token_hash = ?')
+    .prepare('SELECT id, family_id, role FROM members WHERE token_hash = ?')
     .bind(hash)
-    .first<{ id: string; family_id: string }>()
+    .first<{ id: string; family_id: string; role: string }>()
   if (!m) {
     // 追加端末の鍵
     m = await c.env.DB
-      .prepare('SELECT m.id AS id, m.family_id AS family_id FROM member_tokens t JOIN members m ON m.id = t.member_id WHERE t.token_hash = ?')
+      .prepare('SELECT m.id AS id, m.family_id AS family_id, m.role AS role FROM member_tokens t JOIN members m ON m.id = t.member_id WHERE t.token_hash = ?')
       .bind(hash)
-      .first<{ id: string; family_id: string }>()
+      .first<{ id: string; family_id: string; role: string }>()
   }
   if (!m) return c.json({ error: 'unauthorized' }, 401)
   c.set('familyId', m.family_id)
   c.set('memberId', m.id)
+  c.set('role', (m.role as 'editor' | 'viewer') || 'editor')
   return next()
 })
 
@@ -156,12 +165,13 @@ api.get('/me', async (c) => {
   const familyId = c.get('familyId')
   const [family, members, children] = await Promise.all([
     db.prepare('SELECT id, code FROM families WHERE id = ?').bind(familyId).first(),
-    db.prepare('SELECT id, name FROM members WHERE family_id = ? ORDER BY created_at').bind(familyId).all(),
+    db.prepare('SELECT id, name, role FROM members WHERE family_id = ? ORDER BY created_at').bind(familyId).all(),
     db.prepare('SELECT id, name, birthday, gender FROM children WHERE family_id = ? ORDER BY birthday, created_at')
       .bind(familyId).all()
   ])
   return c.json({
     me: c.get('memberId'),
+    role: c.get('role'),
     family,
     members: members.results,
     children: children.results
@@ -176,8 +186,36 @@ api.put('/members/me', async (c) => {
   return c.json({ ok: true })
 })
 
+// メンバーのロール(権限)変更 (editor: 記録・閲覧 / viewer: 閲覧のみ)
+api.put('/members/:id/role', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
+  const id = c.req.param('id')
+  const body = await readJson(c)
+  const role = body.role === 'viewer' ? 'viewer' : body.role === 'editor' ? 'editor' : null
+  if (!role) return c.json({ error: '役割が不正です' }, 400)
+
+  const db = c.env.DB
+  const fid = c.get('familyId')
+  const target = await db.prepare('SELECT id, role FROM members WHERE id = ? AND family_id = ?').bind(id, fid).first<{ id: string; role: string }>()
+  if (!target) return c.json({ error: 'メンバーが見つかりません' }, 404)
+
+  if (target.role !== 'viewer' && role === 'viewer') {
+    // 家族にエディターが1人しかいない場合、その人をviewerにすることはできない
+    const editors = await db.prepare("SELECT COUNT(*) AS n FROM members WHERE family_id = ? AND role != 'viewer'").bind(fid).first<{ n: number }>()
+    if ((editors?.n ?? 0) <= 1) {
+      return c.json({ error: '家族に少なくとも1人は記録できるメンバーが必要です' }, 400)
+    }
+  }
+
+  await db.prepare('UPDATE members SET role = ? WHERE id = ? AND family_id = ?').bind(role, id, fid).run()
+  return c.json({ ok: true, role })
+})
+
 // 家族コードの再発行。古いコードは使えなくなる(参加済みの端末はそのまま使える)
 api.post('/families/regenerate-code', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const code = await uniqueCode(c.env.DB)
   if (!code) return c.json({ error: '家族コードの生成に失敗しました。もう一度お試しください' }, 500)
   await c.env.DB.prepare('UPDATE families SET code = ? WHERE id = ?').bind(code, c.get('familyId')).run()
@@ -187,6 +225,8 @@ api.post('/families/regenerate-code', async (c) => {
 // 「はじめて使う」を間違えて押したときの取り消し。
 // 家族が空(メンバー1人・お子さん0人)のときだけ、家族ごと削除できる
 api.post('/families/discard', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const db = c.env.DB
   const fid = c.get('familyId')
   const members = await db.prepare('SELECT COUNT(*) AS n FROM members WHERE family_id = ?').bind(fid).first<{ n: number }>()
@@ -205,6 +245,8 @@ api.post('/families/discard', async (c) => {
 
 // メンバーの削除(自分自身は不可)。削除された端末は以後アクセスできない
 api.delete('/members/:id', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const id = c.req.param('id')
   if (id === c.get('memberId')) return c.json({ error: '自分自身は削除できません。「連携を解除」を使ってください' }, 400)
   const r = await c.env.DB
@@ -219,6 +261,8 @@ api.delete('/members/:id', async (c) => {
 // ---------- 子ども ----------
 
 api.post('/children', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const body = await readJson(c)
   const name = str(body.name, 30)
   if (!name) return c.json({ error: 'お子さんの名前を入力してください' }, 400)
@@ -233,6 +277,8 @@ api.post('/children', async (c) => {
 })
 
 api.put('/children/:id', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const body = await readJson(c)
   const name = str(body.name, 30)
   if (!name) return c.json({ error: 'お子さんの名前を入力してください' }, 400)
@@ -247,6 +293,8 @@ api.put('/children/:id', async (c) => {
 })
 
 api.delete('/children/:id', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const db = c.env.DB
   const id = c.req.param('id')
   const fid = c.get('familyId')
@@ -352,6 +400,8 @@ function normalizeLog(body: Record<string, unknown>) {
 }
 
 api.post('/children/:id/logs', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const childId = c.req.param('id')
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
   const n = normalizeLog(await readJson(c))
@@ -370,6 +420,8 @@ api.post('/children/:id/logs', async (c) => {
 })
 
 api.put('/logs/:id', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const n = normalizeLog(await readJson(c))
   if ('error' in n) return c.json({ error: n.error }, 400)
   const v = n.value!
@@ -385,6 +437,8 @@ api.put('/logs/:id', async (c) => {
 })
 
 api.delete('/logs/:id', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const r = await c.env.DB
     .prepare('DELETE FROM logs WHERE id = ? AND family_id = ?')
     .bind(c.req.param('id'), c.get('familyId'))
@@ -409,6 +463,8 @@ api.get('/children/:id/growth', async (c) => {
 })
 
 api.post('/children/:id/growth', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const childId = c.req.param('id')
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
   const body = await readJson(c)
@@ -434,6 +490,8 @@ api.post('/children/:id/growth', async (c) => {
 })
 
 api.delete('/growth/:id', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const r = await c.env.DB
     .prepare('DELETE FROM growth WHERE id = ? AND family_id = ?')
     .bind(c.req.param('id'), c.get('familyId'))
@@ -455,6 +513,8 @@ api.get('/children/:id/vaccinations', async (c) => {
 })
 
 api.put('/children/:id/vaccinations/:key', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const childId = c.req.param('id')
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
   const key = c.req.param('key')
@@ -472,6 +532,8 @@ api.put('/children/:id/vaccinations/:key', async (c) => {
 })
 
 api.delete('/children/:id/vaccinations/:key', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const childId = c.req.param('id')
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
   await c.env.DB
@@ -496,6 +558,8 @@ api.get('/children/:id/subsidies', async (c) => {
 })
 
 api.put('/children/:id/subsidies/:key', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const childId = c.req.param('id')
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
   const key = c.req.param('key')
@@ -513,6 +577,8 @@ api.put('/children/:id/subsidies/:key', async (c) => {
 })
 
 api.delete('/children/:id/subsidies/:key', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const childId = c.req.param('id')
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
   await c.env.DB
@@ -540,6 +606,8 @@ api.get('/children/:id/foods', async (c) => {
 })
 
 api.post('/children/:id/foods', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const childId = c.req.param('id')
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
   const body = await readJson(c)
@@ -559,6 +627,8 @@ api.post('/children/:id/foods', async (c) => {
 })
 
 api.delete('/foods/:id', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const r = await c.env.DB
     .prepare('DELETE FROM foods WHERE id = ? AND family_id = ?')
     .bind(c.req.param('id'), c.get('familyId'))
@@ -574,6 +644,8 @@ const ID_RE = /^[0-9a-f-]{36}$/
 
 // 画像はクライアントで縮小した JPEG のみ受け付ける(先頭バイトも検査)
 api.post('/photos', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const len = Number(c.req.header('Content-Length') || 0)
   if (len > MAX_PHOTO_BYTES) return c.json({ error: '写真が大きすぎます(4MBまで)' }, 413)
   const buf = await c.req.arrayBuffer()
@@ -602,6 +674,8 @@ api.get('/photos/:id', async (c) => {
 
 // 日記に紐づいていない写真だけ削除できる(入力をキャンセルしたときの後始末)
 api.delete('/photos/:id', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const id = c.req.param('id')
   if (!ID_RE.test(id)) return c.json({ error: 'not found' }, 404)
   const used = await c.env.DB
@@ -629,6 +703,8 @@ api.get('/children/:id/diary', async (c) => {
 })
 
 api.post('/children/:id/diary', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const childId = c.req.param('id')
   if (!(await ownsChild(c, childId))) return c.json({ error: 'not found' }, 404)
   const body = await readJson(c)
@@ -655,6 +731,8 @@ api.post('/children/:id/diary', async (c) => {
 })
 
 api.put('/diary/:id', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const body = await readJson(c)
   if (!isDate(body.entry_date)) return c.json({ error: '日付を入力してください' }, 400)
   const text = str(body.body, 2000)
@@ -672,6 +750,8 @@ api.put('/diary/:id', async (c) => {
 })
 
 api.delete('/diary/:id', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   const row = await c.env.DB
     .prepare('SELECT photo_id FROM diary WHERE id = ? AND family_id = ?')
     .bind(c.req.param('id'), c.get('familyId'))
@@ -710,6 +790,8 @@ api.get('/ai/status', async (c) => {
 })
 
 api.post('/ai/parse', async (c) => {
+  const denied = requireEditor(c)
+  if (denied) return denied
   if (!c.env.GEMINI_API_KEY) return c.json({ error: 'AI機能はまだ設定されていません' }, 503)
   const familyId = c.get('familyId')
   const tz = Math.max(-840, Math.min(840, num(c.req.query('tz')) ?? -540))

@@ -259,13 +259,14 @@
   BA.openChildSwitcher = function () {
     const cs = BA.state.children;
     const cur = BA.child();
+    const isViewer = BA.isViewer();
     const html = '<div class="log-list">' + cs.map((c) =>
       '<button class="log-row" data-act="choose" data-id="' + c.id + '">' +
       '<span class="log-ic" style="background:' + (c.id === (cur && cur.id) ? 'var(--primary)' : 'var(--sub)') + '"><i class="fas fa-baby"></i></span>' +
       '<span class="log-main"><span class="log-title">' + esc(c.name) + '</span><br><span class="log-sub">' + esc(BA.ageText(c.birthday)) + '</span></span>' +
       (c.id === (cur && cur.id) ? '<i class="fas fa-check" style="color:var(--primary)"></i>' : '') +
       '</button>').join('') + '</div>' +
-      '<div style="height:12px"></div><div class="btn-row"><button class="btn" data-act="edit"><i class="fas fa-pen"></i>情報を編集</button><button class="btn primary" data-act="add"><i class="fas fa-plus"></i>追加</button></div>';
+      (isViewer ? '' : '<div style="height:12px"></div><div class="btn-row"><button class="btn" data-act="edit"><i class="fas fa-pen"></i>情報を編集</button><button class="btn primary" data-act="add"><i class="fas fa-plus"></i>追加</button></div>');
     BA.openSheet('お子さんを選ぶ', '', html, {
       click(act, el) {
         if (act === 'choose') {
@@ -276,6 +277,30 @@
         } else if (act === 'add') { BA.closeSheet(); BA.openChildForm(null); }
         else if (act === 'edit') { BA.closeSheet(); BA.openChildForm(cur); }
       },
+      input() {}
+    });
+  };
+
+  // ---------- 記録の詳細(閲覧専用用) ----------
+  BA.openLogDetail = function (log) {
+    const l = BA.parseLog(log);
+    const d = BA.describe(l);
+    const t = BA.TYPES[l.type];
+    let time = BA.clock(l.started_at);
+    if (l.type === 'sleep' && l.ended_at != null) time += ' – ' + BA.clock(l.ended_at);
+    const who = BA.memberName(l.member_id);
+
+    function render() {
+      return '<div class="card" style="margin:0 0 14px;box-shadow:none;border:1px solid var(--line)">' +
+        '<div style="font-size:18px;font-weight:700;margin-bottom:8px">' + esc(d.title) + '</div>' +
+        '<div class="muted" style="margin-bottom:6px"><i class="fas fa-clock"></i> ' + esc(time) + '</div>' +
+        (d.sub ? '<div style="margin-bottom:6px"><i class="fas fa-circle-info"></i> ' + esc(d.sub) + '</div>' : '') +
+        (who ? '<div class="muted" style="font-size:12px"><i class="fas fa-user"></i> 記録した人: ' + esc(who) + '</div>' : '') +
+        '</div>' +
+        '<button class="btn block" data-act="close"><i class="fas fa-xmark"></i>閉じる</button>';
+    }
+    BA.openSheet(t.label + 'の詳細', iconHtml(l.type), render(), {
+      click(act) { if (act === 'close') BA.closeSheet(); },
       input() {}
     });
   };
@@ -311,6 +336,22 @@
 
   // ---------- 予防接種 ----------
   BA.openVaccine = function (row) {
+    if (BA.isViewer()) {
+      const range = BA.ymd(row.startDate.getTime()) + ' 〜 ' + BA.ymd(row.endDate.getTime());
+      function renderView() {
+        return '<p class="muted" style="margin-bottom:12px">標準的な時期の目安: ' + esc(range) + (row.note ? '<br>' + esc(row.note) : '') + '</p>' +
+          (row.doneOn
+            ? '<div class="notice" style="margin-bottom:12px"><i class="fas fa-check" style="color:var(--ok)"></i> 接種日: <b>' + esc(row.doneOn.replace(/-/g, '/')) + '</b> (接種済み)</div>'
+            : '<div class="notice" style="margin-bottom:12px"><i class="fas fa-clock" style="color:var(--sub)"></i> 未接種</div>') +
+          '<button class="btn block" data-act="close"><i class="fas fa-xmark"></i>閉じる</button>' +
+          '<p class="disclaimer" style="margin-top:12px">実際の接種時期・間隔は、かかりつけ医や自治体の案内に従ってください。</p>';
+      }
+      BA.openSheet(row.name, '', renderView(), {
+        click(act) { if (act === 'close') BA.closeSheet(); },
+        input() {}
+      });
+      return;
+    }
     const st = { date: row.doneOn || BA.ymd(Date.now()) };
     const range = BA.ymd(row.startDate.getTime()) + ' 〜 ' + BA.ymd(row.endDate.getTime());
     function render() {

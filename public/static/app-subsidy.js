@@ -265,6 +265,7 @@
   }
 
   async function toggleDone(id) {
+    if (BA.isViewer()) return;
     const ch = BA.child();
     if (!ch) return;
     const list = (BA.data.subs || []).slice();
@@ -313,14 +314,19 @@
         else if (left < 0) tag = '<span class="badge late">期限超過</span>';
       }
     }
+    const isViewer = BA.isViewer();
     const chk = checkable(it)
-      ? '<button type="button" class="sub-check' + (rec ? ' on' : '') + '" data-sub-toggle="' + it.id + '" role="checkbox" aria-checked="' + (rec ? 'true' : 'false') + '" aria-label="' + esc(it.title) + 'を' + doneWord(it) + 'にする"><i class="fas fa-check"></i></button>'
+      ? (isViewer
+        ? '<span class="sub-check' + (rec ? ' on' : '') + '" style="cursor:default;opacity:' + (rec ? '1' : '.3') + '"><i class="fas fa-check"></i></span>'
+        : '<button type="button" class="sub-check' + (rec ? ' on' : '') + '" data-sub-toggle="' + it.id + '" role="checkbox" aria-checked="' + (rec ? 'true' : 'false') + '" aria-label="' + esc(it.title) + 'を' + doneWord(it) + 'にする"><i class="fas fa-check"></i></button>')
       : '';
     const doneBadge = rec ? '<span class="badge now">' + doneWord(it) + '</span>' : badge(it);
     const doneBtn = checkable(it)
-      ? '<button type="button" class="btn ' + (rec ? 'soft' : 'primary') + ' sub-donebtn" data-sub-toggle="' + it.id + '">' +
-        (rec ? '<i class="fas fa-rotate-left"></i> ' + doneWord(it) + 'を取り消す' : '<i class="fas fa-check"></i> ' + doneWord(it) + 'にする') + '</button>' +
-        (rec ? '<p class="muted" style="margin:6px 0 0">' + esc(doneInfo(rec)) + '</p>' : '')
+      ? (isViewer
+        ? (rec ? '<p class="muted" style="margin:6px 0 0"><i class="fas fa-check" style="color:var(--ok)"></i> ' + esc(doneInfo(rec)) + '</p>' : '')
+        : '<button type="button" class="btn ' + (rec ? 'soft' : 'primary') + ' sub-donebtn" data-sub-toggle="' + it.id + '">' +
+          (rec ? '<i class="fas fa-rotate-left"></i> ' + doneWord(it) + 'を取り消す' : '<i class="fas fa-check"></i> ' + doneWord(it) + 'にする') + '</button>' +
+          (rec ? '<p class="muted" style="margin:6px 0 0">' + esc(doneInfo(rec)) + '</p>' : ''))
       : '';
     return '<details class="fold sub-item' + (rec ? ' is-done' : '') + '" id="sub-' + it.id + '"><summary>' + chk + '<span class="sub-t">' + esc(it.title) + '</span>' + tag + doneBadge + '</summary>' +
       '<div class="sub-body">' +
